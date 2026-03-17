@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import api from "../../../lib/api";
 
 const orders = [
   { id: "#PB-2026-1084", customer: "María González", email: "maria@email.com", date: "16 Mar 2026", items: 3, total: "$1,100.00", status: "Completado" },
@@ -16,21 +17,75 @@ const orders = [
 ];
 
 const statusStyle = {
+  Pendiente: { bg: "rgba(235,71,139,0.1)", color: "#eb478b", icon: "hourglass_top" },
   Completado: { bg: "rgba(16,185,129,0.1)", color: "#059669", icon: "check_circle" },
   Enviado: { bg: "rgba(59,130,246,0.1)", color: "#2563eb", icon: "local_shipping" },
   Procesando: { bg: "rgba(245,158,11,0.1)", color: "#d97706", icon: "schedule" },
   Cancelado: { bg: "rgba(239,68,68,0.1)", color: "#dc2626", icon: "cancel" },
 };
 
-const allStatuses = ["Todos", "Completado", "Enviado", "Procesando", "Cancelado"];
+const allStatuses = ["Todos", "Pendiente", "Procesando", "Enviado", "Entregado", "Cancelado"];
+
+const nextStatusMap = {
+  Pendiente: ["Procesando", "Cancelado"],
+  Procesando: ["Enviado", "Cancelado"],
+  Enviado: ["Entregado"],
+  Entregado: [],
+  Cancelado: [],
+};
 
 export default function PedidosPage() {
   const [filter, setFilter] = useState("Todos");
   const [search, setSearch] = useState("");
   const [view, setView] = useState("grid");
+  const [ordersData, setOrdersData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const filtered = orders.filter((o) => {
-    const matchFilter = filter === "Todos" || o.status === filter;
+  useEffect(() => {
+    loadOrders();
+  }, []);
+
+  async function loadOrders() {
+    try {
+      setLoading(true);
+      const data = await api.orders();
+      setOrdersData(data);
+      setError("");
+    } catch (err) {
+      setError(err.message || "No fue posible cargar pedidos");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function changeStatus(order, status) {
+    try {
+      await api.updateOrderStatus(order._id, status);
+      await loadOrders();
+    } catch (err) {
+      setError(err.message || "No fue posible actualizar el pedido");
+    }
+  }
+
+  const normalizedOrders = useMemo(
+    () =>
+      ordersData.map((o) => ({
+        _id: o._id,
+        id: o.code,
+        customer: o.customerName,
+        email: o.paymentStatus || "",
+        date: new Date(o.createdAt).toLocaleDateString("es-VE"),
+        items: o.items?.length || 0,
+        total: `$${Number(o.total || 0).toFixed(2)}`,
+        status: o.status === "Entregado" ? "Completado" : o.status,
+        rawStatus: o.status,
+      })),
+    [ordersData]
+  );
+
+  const filtered = normalizedOrders.filter((o) => {
+    const matchFilter = filter === "Todos" || o.status === filter || o.rawStatus === filter;
     const matchSearch =
       o.id.toLowerCase().includes(search.toLowerCase()) ||
       o.customer.toLowerCase().includes(search.toLowerCase());
@@ -38,11 +93,12 @@ export default function PedidosPage() {
   });
 
   const counts = {
-    total: orders.length,
-    completado: orders.filter((o) => o.status === "Completado").length,
-    enviado: orders.filter((o) => o.status === "Enviado").length,
-    procesando: orders.filter((o) => o.status === "Procesando").length,
-    cancelado: orders.filter((o) => o.status === "Cancelado").length,
+    total: normalizedOrders.length,
+    pendiente: normalizedOrders.filter((o) => o.rawStatus === "Pendiente").length,
+    completado: normalizedOrders.filter((o) => o.rawStatus === "Entregado").length,
+    enviado: normalizedOrders.filter((o) => o.rawStatus === "Enviado").length,
+    procesando: normalizedOrders.filter((o) => o.rawStatus === "Procesando").length,
+    cancelado: normalizedOrders.filter((o) => o.rawStatus === "Cancelado").length,
   };
 
   return (
@@ -58,9 +114,9 @@ export default function PedidosPage() {
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         {[
           { label: "Total Pedidos", value: counts.total, icon: "shopping_bag", color: "#eb478b" },
-          { label: "Completados", value: counts.completado, icon: "check_circle", color: "#10b981" },
-          { label: "En Tránsito", value: counts.enviado, icon: "local_shipping", color: "#3b82f6" },
+          { label: "Pendientes", value: counts.pendiente, icon: "hourglass_top", color: "#eb478b" },
           { label: "Procesando", value: counts.procesando, icon: "schedule", color: "#f59e0b" },
+          { label: "En Tránsito", value: counts.enviado, icon: "local_shipping", color: "#3b82f6" },
         ].map((c) => (
           <div
             key={c.label}
@@ -88,6 +144,11 @@ export default function PedidosPage() {
         className="bg-white rounded-xl overflow-hidden"
         style={{ border: "1px solid rgba(235,71,139,0.1)" }}
       >
+        {error && (
+          <div className="mx-4 mt-4 p-4 rounded-xl text-sm" style={{ backgroundColor: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca" }}>
+            {error}
+          </div>
+        )}
         {/* Toolbar */}
         <div
           className="p-4 flex flex-wrap items-center gap-3"
@@ -162,10 +223,13 @@ export default function PedidosPage() {
           </button>
         </div>
 
-        {view === "grid" ? (
+        {loading ? (
+          <div className="py-12 text-center text-slate-400 text-sm">Cargando pedidos...</div>
+        ) : view === "grid" ? (
           <div className="p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map((o) => {
               const st = statusStyle[o.status];
+              const nextStatuses = nextStatusMap[o.rawStatus] || [];
               return (
                 <div
                   key={o.id}
@@ -195,6 +259,15 @@ export default function PedidosPage() {
                     </span>
                     <span className="text-lg font-bold text-slate-900">{o.total}</span>
                   </div>
+                  {nextStatuses.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-2" style={{ borderTop: "1px solid rgba(235,71,139,0.08)" }}>
+                      {nextStatuses.map((status) => (
+                        <button key={status} onClick={() => changeStatus(o, status)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: "rgba(235,71,139,0.1)", color: "#eb478b" }}>
+                          Pasar a {status}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -272,36 +345,11 @@ export default function PedidosPage() {
                     </td>
                     <td className="px-5 py-4 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <button
-                          className="p-1.5 rounded-lg text-slate-400 transition-colors"
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = "rgba(235,71,139,0.1)";
-                            e.currentTarget.style.color = "#eb478b";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = "transparent";
-                            e.currentTarget.style.color = "#94a3b8";
-                          }}
-                        >
-                          <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
-                            visibility
-                          </span>
-                        </button>
-                        <button
-                          className="p-1.5 rounded-lg text-slate-400 transition-colors"
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = "rgba(235,71,139,0.1)";
-                            e.currentTarget.style.color = "#eb478b";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = "transparent";
-                            e.currentTarget.style.color = "#94a3b8";
-                          }}
-                        >
-                          <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
-                            edit
-                          </span>
-                        </button>
+                        {(nextStatusMap[o.rawStatus] || []).map((status) => (
+                          <button key={status} onClick={() => changeStatus(o, status)} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold" style={{ backgroundColor: "rgba(235,71,139,0.1)", color: "#eb478b" }}>
+                            {status}
+                          </button>
+                        ))}
                       </div>
                     </td>
                   </tr>
@@ -323,7 +371,7 @@ export default function PedidosPage() {
           className="p-4 flex items-center justify-between text-sm text-slate-500"
           style={{ borderTop: "1px solid rgba(235,71,139,0.1)" }}
         >
-          <p>Mostrando {filtered.length} de {orders.length} pedidos</p>
+          <p>Mostrando {filtered.length} de {normalizedOrders.length} pedidos</p>
           <div className="flex gap-2">
             <button
               className="p-2 rounded-lg opacity-50 cursor-not-allowed"

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import api from "../../../lib/api";
 
 const PRODUCTS = [
   { sku: "PB-ACC-001", name: "Midnight Velvet Clutch", category: "Accesorios", price: 285, stock: 42 },
@@ -51,8 +52,46 @@ export default function VentasPage() {
   const [successMsg, setSuccessMsg] = useState("");
   const [showCart, setShowCart] = useState(false);
   const [abonoAmount, setAbonoAmount] = useState("");
+  const [productsData, setProductsData] = useState([]);
+  const [customersData, setCustomersData] = useState([]);
+  const [settings, setSettings] = useState({ taxRate: 0 });
+  const [exchangeRate, setExchangeRate] = useState(null);
+  const [error, setError] = useState("");
+  const [processing, setProcessing] = useState(false);
 
-  const filtered = PRODUCTS.filter((p) => {
+  useEffect(() => {
+    loadInitialData();
+  }, []);
+
+  async function loadInitialData() {
+    try {
+      const [products, customers, currentSettings] = await Promise.all([
+        api.products(),
+        api.customers(),
+        api.settings(),
+      ]);
+
+      setProductsData(products);
+      setCustomersData(
+        customers.map((customer) => ({
+          id: customer._id,
+          name: customer.nombre,
+          cedula: customer.cedula,
+          email: customer.email,
+          phone: customer.telefono,
+        }))
+      );
+      setSettings(currentSettings || { taxRate: 0 });
+
+      const response = await fetch("https://ve.dolarapi.com/v1/dolares/oficial", { cache: "no-store" });
+      const rateData = await response.json();
+      setExchangeRate(rateData?.promedio || null);
+    } catch (err) {
+      setError(err.message || "No fue posible cargar ventas");
+    }
+  }
+
+  const filtered = productsData.filter((p) => {
     const s = search.toLowerCase();
     return (
       (p.name.toLowerCase().includes(s) || p.sku.toLowerCase().includes(s)) &&
@@ -60,7 +99,7 @@ export default function VentasPage() {
     );
   });
 
-  const filteredCustomers = CUSTOMERS.filter(
+  const filteredCustomers = customersData.filter(
     (c) =>
       c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
       c.cedula.includes(customerSearch)
@@ -93,31 +132,69 @@ export default function VentasPage() {
   const clearCart = () => setCart([]);
 
   const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
-  const iva = subtotal * 0.16;
+  const taxRate = Number(settings?.taxRate || 0);
+  const iva = subtotal * (taxRate / 100);
   const total = subtotal + iva;
   const totalItems = cart.reduce((s, i) => s + i.qty, 0);
 
-  const handleCheckout = () => {
+  const formatUsd = useMemo(
+    () => (value) => `$${Number(value || 0).toFixed(2)}`,
+    []
+  );
+
+  const formatVes = useMemo(
+    () => (value) =>
+      exchangeRate
+        ? `Bs. ${(Number(value || 0) * exchangeRate).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : "Bs. --",
+    [exchangeRate]
+  );
+
+  const handleCheckout = async () => {
     if (cart.length === 0) return;
     if ((saleType === "credito" || saleType === "mixto") && !selectedCustomer) return;
-    
-    let label = "";
-    if (saleType === "contado") {
-      label = "Venta al contado procesada correctamente";
-    } else if (saleType === "credito") {
-      label = `Factura a crédito generada para ${selectedCustomer.name}`;
-    } else if (saleType === "mixto") {
+
+    try {
+      setProcessing(true);
+      setError("");
+
       const abono = parseFloat(abonoAmount) || 0;
-      const credito = total - abono;
-      label = `Abono: $${abono.toFixed(2)} | Crédito: $${credito.toFixed(2)} - ${selectedCustomer.name}`;
+      await api.createSale({
+        customerId: selectedCustomer?.id,
+        customerName: selectedCustomer?.name,
+        paymentMethod,
+        saleType,
+        abono,
+        items: cart.map((item) => ({
+          productId: item._id,
+          name: item.name,
+          qty: item.qty,
+        })),
+      });
+
+      await loadInitialData();
+
+      let label = "";
+      if (saleType === "contado") {
+        label = "Venta al contado procesada correctamente";
+      } else if (saleType === "credito") {
+        label = `Factura a crédito generada para ${selectedCustomer.name}`;
+      } else if (saleType === "mixto") {
+        const credito = total - abono;
+        label = `Abono: ${formatUsd(abono)} | Crédito: ${formatUsd(credito)} - ${selectedCustomer.name}`;
+      }
+
+      setSuccessMsg(label);
+      clearCart();
+      setSelectedCustomer(null);
+      setCustomerSearch("");
+      setAbonoAmount("");
+      setTimeout(() => setSuccessMsg(""), 4000);
+    } catch (err) {
+      setError(err.message || "No fue posible procesar la venta");
+    } finally {
+      setProcessing(false);
     }
-    
-    setSuccessMsg(label);
-    clearCart();
-    setSelectedCustomer(null);
-    setCustomerSearch("");
-    setAbonoAmount("");
-    setTimeout(() => setSuccessMsg(""), 4000);
   };
 
   const cartInProduct = (sku) => cart.find((i) => i.sku === sku);
@@ -131,6 +208,11 @@ export default function VentasPage() {
         }`}
         style={{ border: "1px solid rgba(235,71,139,0.1)" }}
       >
+        {error && (
+          <div className="mx-4 mt-4 p-3 rounded-xl text-sm" style={{ backgroundColor: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca" }}>
+            {error}
+          </div>
+        )}
         {/* Toolbar */}
         <div
           className="p-4 flex flex-wrap items-center gap-3 shrink-0"
@@ -169,6 +251,9 @@ export default function VentasPage() {
                 {cat}
               </button>
             ))}
+          </div>
+          <div className="ml-auto px-3 py-2 rounded-lg text-xs font-semibold" style={{ backgroundColor: "rgba(235,71,139,0.08)", color: PRIMARY }}>
+            Dólar oficial: {exchangeRate ? `Bs. ${Number(exchangeRate).toLocaleString("es-VE", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}` : "cargando..."}
           </div>
         </div>
 
@@ -219,12 +304,15 @@ export default function VentasPage() {
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <span
-                      className="text-sm font-bold"
-                      style={{ color: PRIMARY }}
-                    >
-                      ${p.price.toFixed(2)}
-                    </span>
+                    <div>
+                      <span
+                        className="text-sm font-bold"
+                        style={{ color: PRIMARY }}
+                      >
+                        {formatUsd(p.price)}
+                      </span>
+                      <p className="text-[11px] text-slate-400">{formatVes(p.price)}</p>
+                    </div>
                     <span
                       className="text-xs font-medium px-1.5 py-0.5 rounded"
                       style={{
@@ -588,9 +676,8 @@ export default function VentasPage() {
                     <p className="text-sm font-semibold text-slate-900 leading-tight truncate">
                       {item.name}
                     </p>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      ${item.price.toFixed(2)} c/u
-                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">{formatUsd(item.price)} c/u</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">{formatVes(item.price)} c/u</p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
@@ -620,8 +707,9 @@ export default function VentasPage() {
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-sm font-bold" style={{ color: PRIMARY }}>
-                      ${(item.price * item.qty).toFixed(2)}
+                      {formatUsd(item.price * item.qty)}
                     </p>
+                    <p className="text-[11px] text-slate-400">{formatVes(item.price * item.qty)}</p>
                     <button
                       onClick={() => removeItem(item.sku)}
                       className="text-xs text-slate-400 hover:text-red-500 transition-colors"
@@ -643,12 +731,15 @@ export default function VentasPage() {
           {/* Summary */}
           <div className="space-y-1.5 mb-3">
             {[
-              { label: "Subtotal", value: `$${subtotal.toFixed(2)}` },
-              { label: "IVA (16%)", value: `$${iva.toFixed(2)}` },
-            ].map(({ label, value }) => (
+              { label: "Subtotal", usd: formatUsd(subtotal), ves: formatVes(subtotal) },
+              { label: `IVA (${taxRate}%)`, usd: formatUsd(iva), ves: formatVes(iva) },
+            ].map(({ label, usd, ves }) => (
               <div key={label} className="flex justify-between text-sm text-slate-600">
                 <span>{label}</span>
-                <span>{value}</span>
+                <div className="text-right">
+                  <div>{usd}</div>
+                  <div className="text-[11px] text-slate-400">{ves}</div>
+                </div>
               </div>
             ))}
             <div
@@ -659,7 +750,10 @@ export default function VentasPage() {
               }}
             >
               <span>Total</span>
-              <span style={{ color: PRIMARY }}>${total.toFixed(2)}</span>
+              <div className="text-right">
+                <div style={{ color: PRIMARY }}>{formatUsd(total)}</div>
+                <div className="text-[11px] text-slate-400">{formatVes(total)}</div>
+              </div>
             </div>
           </div>
 
@@ -691,11 +785,17 @@ export default function VentasPage() {
                 <div className="mt-2 p-2 rounded-lg" style={{ backgroundColor: "rgba(235,71,139,0.08)" }}>
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-600">Abono:</span>
-                    <span className="font-bold" style={{ color: "#10b981" }}>${parseFloat(abonoAmount).toFixed(2)}</span>
+                    <div className="text-right">
+                      <div className="font-bold" style={{ color: "#10b981" }}>{formatUsd(parseFloat(abonoAmount))}</div>
+                      <div className="text-[11px] text-slate-400">{formatVes(parseFloat(abonoAmount))}</div>
+                    </div>
                   </div>
                   <div className="flex justify-between text-xs mt-1">
                     <span className="text-slate-600">Queda a crédito:</span>
-                    <span className="font-bold" style={{ color: PRIMARY }}>${(total - parseFloat(abonoAmount)).toFixed(2)}</span>
+                    <div className="text-right">
+                      <div className="font-bold" style={{ color: PRIMARY }}>{formatUsd(total - parseFloat(abonoAmount))}</div>
+                      <div className="text-[11px] text-slate-400">{formatVes(total - parseFloat(abonoAmount))}</div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -727,6 +827,7 @@ export default function VentasPage() {
           <button
             onClick={handleCheckout}
             disabled={
+              processing ||
               cart.length === 0 ||
               ((saleType === "credito" || saleType === "mixto") && !selectedCustomer) ||
               (saleType === "mixto" && (!abonoAmount || parseFloat(abonoAmount) <= 0 || parseFloat(abonoAmount) >= total))
@@ -734,12 +835,14 @@ export default function VentasPage() {
             className="w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all"
             style={{
               backgroundColor:
+                processing ||
                 cart.length === 0 ||
                 ((saleType === "credito" || saleType === "mixto") && !selectedCustomer) ||
                 (saleType === "mixto" && (!abonoAmount || parseFloat(abonoAmount) <= 0 || parseFloat(abonoAmount) >= total))
                   ? "#e2e8f0"
                   : PRIMARY,
               color:
+                processing ||
                 cart.length === 0 ||
                 ((saleType === "credito" || saleType === "mixto") && !selectedCustomer) ||
                 (saleType === "mixto" && (!abonoAmount || parseFloat(abonoAmount) <= 0 || parseFloat(abonoAmount) >= total))
@@ -754,15 +857,22 @@ export default function VentasPage() {
             <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>
               {saleType === "credito" ? "credit_score" : saleType === "mixto" ? "payments" : "point_of_sale"}
             </span>
-            {saleType === "credito"
+            {processing
+              ? "Procesando..."
+              : saleType === "credito"
               ? "Generar Factura a Crédito"
               : saleType === "mixto"
               ? "Procesar Pago Mixto"
               : "Cobrar"}
-            {total > 0 && saleType !== "mixto" && (
-              <span className="ml-1 opacity-80 text-sm">${total.toFixed(2)}</span>
+            {total > 0 && saleType !== "mixto" && !processing && (
+              <span className="ml-1 opacity-80 text-sm">{formatUsd(total)}</span>
             )}
           </button>
+          {total > 0 && (
+            <p className="text-xs text-center mt-2 text-slate-400">
+              {formatUsd(total)} · {formatVes(total)}
+            </p>
+          )}
 
           {(saleType === "credito" || saleType === "mixto") && !selectedCustomer && (
             <p className="text-xs text-center mt-2" style={{ color: PRIMARY }}>

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { clearSession, getStoredUser, getToken } from "../../lib/auth";
+import api from "../../lib/api";
 
 const navItems = [
   { href: "/dashboard", icon: "dashboard", label: "Panel de Control", shortLabel: "Panel" },
@@ -23,6 +24,7 @@ export default function DashboardLayout({ children }) {
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [user, setUser] = useState(null);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   useEffect(() => {
     const storedUser = getStoredUser();
@@ -33,6 +35,35 @@ export default function DashboardLayout({ children }) {
     }
     setUser(storedUser);
   }, []);
+
+  useEffect(() => {
+    const token = getToken();
+    if (!token) {
+      return;
+    }
+
+    let active = true;
+
+    async function loadNotifications() {
+      try {
+        const data = await api.notifications();
+        if (!active) {
+          return;
+        }
+        setUnreadNotifications((data || []).filter((item) => !item.read).length);
+      } catch (error) {
+        if (active) {
+          setUnreadNotifications(0);
+        }
+      }
+    }
+
+    loadNotifications();
+
+    return () => {
+      active = false;
+    };
+  }, [pathname]);
 
   const handleLogout = () => {
     clearSession();
@@ -199,7 +230,7 @@ export default function DashboardLayout({ children }) {
           <div className="flex-1 hidden lg:block" />
           <div className="flex items-center gap-2 md:gap-3">
             <button
-              className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors"
+              className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors relative"
               style={{ backgroundColor: "rgba(235,71,139,0.08)" }}
               onClick={() => router.push("/dashboard/notificaciones")}
               onMouseEnter={(e) =>
@@ -217,6 +248,14 @@ export default function DashboardLayout({ children }) {
               >
                 notifications
               </span>
+              {unreadNotifications > 0 && (
+                <span
+                  className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold text-white flex items-center justify-center"
+                  style={{ backgroundColor: "#ef4444" }}
+                >
+                  {unreadNotifications > 99 ? "99+" : unreadNotifications}
+                </span>
+              )}
             </button>
             <button
               className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors"

@@ -34,6 +34,15 @@ export default function NotificacionesPage() {
     }
   };
 
+  const deactivate = async (id) => {
+    try {
+      await api.deactivateNotification(id);
+      setItems((current) => current.filter((item) => item._id !== id));
+    } catch (err) {
+      setError(err.message || "No fue posible desactivar la notificación");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -99,6 +108,9 @@ export default function NotificacionesPage() {
                         Marcar leída
                       </button>
                     )}
+                    <button onClick={() => deactivate(item._id)} className="px-3 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: "#64748b" }}>
+                      Eliminar
+                    </button>
                   </div>
                 </div>
               );

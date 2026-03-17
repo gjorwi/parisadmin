@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import api from "../../../lib/api";
 
 const allProducts = [
   { name: "Midnight Velvet Clutch", sku: "PB-ACC-001", category: "Accesorios", stock: 42, price: 285, status: "En Stock" },
@@ -18,16 +19,25 @@ const allProducts = [
 ];
 
 const categories = ["Todos", "Accesorios", "Ropa", "Calzado", "Joyería"];
-const statusOptions = ["Todos", "En Stock", "Stock Bajo", "Normal", "Agotado"];
+const statusOptions = ["Todos", "En Stock", "Stock Bajo", "Normal", "Agotado", "Inactivo"];
 
 const statusStyle = {
   "En Stock": { bg: "rgba(16,185,129,0.1)", color: "#059669" },
   "Stock Bajo": { bg: "rgba(235,71,139,0.1)", color: "#eb478b" },
   "Normal": { bg: "rgba(245,158,11,0.1)", color: "#d97706" },
   "Agotado": { bg: "rgba(239,68,68,0.1)", color: "#dc2626" },
+  "Inactivo": { bg: "rgba(148,163,184,0.14)", color: "#475569" },
 };
 
 export default function InventarioPage() {
+  const emptyForm = {
+    name: "",
+    category: "",
+    price: "",
+    stock: "",
+    description: "",
+  };
+
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("Todos");
   const [statusFilter, setStatusFilter] = useState("Todos");
@@ -36,6 +46,30 @@ export default function InventarioPage() {
   const [skuMode, setSkuMode] = useState("manual");
   const [skuValue, setSkuValue] = useState("");
   const [productImages, setProductImages] = useState([null, null, null]);
+  const [imageFiles, setImageFiles] = useState([null, null, null]);
+  const [productsData, setProductsData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState(emptyForm);
+
+  useEffect(() => {
+    loadProducts();
+  }, []);
+
+  async function loadProducts() {
+    try {
+      setLoading(true);
+      const data = await api.products();
+      setProductsData(data);
+      setError("");
+    } catch (err) {
+      setError(err.message || "No fue posible cargar productos");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const generateSku = (category) => {
     const prefix = category ? category.substring(0, 3).toUpperCase() : "PB";
@@ -45,8 +79,11 @@ export default function InventarioPage() {
 
   const handleImageChange = (idx, file) => {
     const updated = [...productImages];
+    const updatedFiles = [...imageFiles];
     updated[idx] = file ? URL.createObjectURL(file) : null;
+    updatedFiles[idx] = file || null;
     setProductImages(updated);
+    setImageFiles(updatedFiles);
   };
 
   const handleCloseModal = () => {
@@ -54,16 +91,103 @@ export default function InventarioPage() {
     setSkuMode("manual");
     setSkuValue("");
     setProductImages([null, null, null]);
+    setImageFiles([null, null, null]);
+    setEditingId(null);
+    setForm(emptyForm);
   };
 
-  const filtered = allProducts.filter((p) => {
+  function getDisplayStatus(product) {
+    if (product.status === "Bajo Stock") return "Stock Bajo";
+    if (product.status === "Activo") return product.stock <= 8 ? "Normal" : "En Stock";
+    return product.status;
+  }
+
+  const filtered = productsData.filter((p) => {
     const matchSearch =
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.sku.toLowerCase().includes(search.toLowerCase());
     const matchCat = categoryFilter === "Todos" || p.category === categoryFilter;
-    const matchStatus = statusFilter === "Todos" || p.status === statusFilter;
+    const matchStatus = statusFilter === "Todos" || getDisplayStatus(p) === statusFilter;
     return matchSearch && matchCat && matchStatus;
   });
+
+  const counts = useMemo(() => ({
+    total: productsData.length,
+    enStock: productsData.filter((p) => getDisplayStatus(p) === "En Stock").length,
+    stockBajo: productsData.filter((p) => getDisplayStatus(p) === "Stock Bajo").length,
+    agotados: productsData.filter((p) => getDisplayStatus(p) === "Agotado").length,
+  }), [productsData]);
+
+  function openCreate() {
+    handleCloseModal();
+    setShowModal(true);
+  }
+
+  function openEdit(product) {
+    setEditingId(product._id);
+    setForm({
+      name: product.name || "",
+      category: product.category || "",
+      price: String(product.price || ""),
+      stock: String(product.stock || ""),
+      description: product.description || "",
+    });
+    setSkuMode("manual");
+    setSkuValue(product.sku || "");
+    setProductImages([
+      product.images?.[0]?.url || null,
+      product.images?.[1]?.url || null,
+      product.images?.[2]?.url || null,
+    ]);
+    setImageFiles([null, null, null]);
+    setShowModal(true);
+  }
+
+  async function handleDelete(id) {
+    const confirmed = window.confirm("¿Deseas eliminar este producto?");
+    if (!confirmed) return;
+
+    try {
+      await api.deleteProduct(id);
+      await loadProducts();
+    } catch (err) {
+      setError(err.message || "No fue posible eliminar el producto");
+    }
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+
+    try {
+      setSaving(true);
+      if (editingId) {
+        await api.updateProduct(editingId, {
+          name: form.name,
+          sku: skuValue,
+          category: form.category,
+          price: Number(form.price),
+          stock: Number(form.stock),
+          description: form.description,
+        });
+      } else {
+        const body = new FormData();
+        body.append("name", form.name);
+        body.append("sku", skuValue);
+        body.append("category", form.category);
+        body.append("price", String(Number(form.price)));
+        body.append("stock", String(Number(form.stock)));
+        body.append("description", form.description);
+        imageFiles.filter(Boolean).forEach((file) => body.append("images", file));
+        await api.createProduct(body);
+      }
+      await loadProducts();
+      handleCloseModal();
+    } catch (err) {
+      setError(err.message || "No fue posible guardar el producto");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div>
@@ -76,7 +200,7 @@ export default function InventarioPage() {
           </p>
         </div>
         <button
-          onClick={() => setShowModal(true)}
+          onClick={openCreate}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm text-white transition-all shrink-0"
           style={{ backgroundColor: "#eb478b", boxShadow: "0 4px 12px rgba(235,71,139,0.3)" }}
           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#d63d7a")}
@@ -87,13 +211,19 @@ export default function InventarioPage() {
         </button>
       </div>
 
+      {error && (
+        <div className="mb-4 p-4 rounded-xl text-sm" style={{ backgroundColor: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca" }}>
+          {error}
+        </div>
+      )}
+
       {/* Summary cards */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         {[
-          { label: "Total SKUs", value: allProducts.length, icon: "inventory_2", color: "#eb478b" },
-          { label: "En Stock", value: allProducts.filter((p) => p.status === "En Stock").length, icon: "check_circle", color: "#10b981" },
-          { label: "Stock Bajo", value: allProducts.filter((p) => p.status === "Stock Bajo").length, icon: "warning", color: "#eb478b" },
-          { label: "Agotados", value: allProducts.filter((p) => p.status === "Agotado").length, icon: "remove_shopping_cart", color: "#ef4444" },
+          { label: "Total SKUs", value: counts.total, icon: "inventory_2", color: "#eb478b" },
+          { label: "En Stock", value: counts.enStock, icon: "check_circle", color: "#10b981" },
+          { label: "Stock Bajo", value: counts.stockBajo, icon: "warning", color: "#eb478b" },
+          { label: "Agotados", value: counts.agotados, icon: "remove_shopping_cart", color: "#ef4444" },
         ].map((c) => (
           <div
             key={c.label}
@@ -200,10 +330,13 @@ export default function InventarioPage() {
         </div>
 
         {/* Grid view */}
-        {view === "grid" ? (
+        {loading ? (
+          <div className="py-12 text-center text-slate-400 text-sm">Cargando productos...</div>
+        ) : view === "grid" ? (
           <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filtered.map((p) => {
-              const st = statusStyle[p.status];
+              const displayStatus = getDisplayStatus(p);
+              const st = statusStyle[displayStatus];
               return (
                 <div
                   key={p.sku}
@@ -245,6 +378,7 @@ export default function InventarioPage() {
                     </div>
                     <div className="flex gap-1">
                       <button
+                        onClick={() => openEdit(p)}
                         className="p-1.5 rounded-lg text-slate-400 transition-colors"
                         onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "rgba(235,71,139,0.1)"; e.currentTarget.style.color = "#eb478b"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.color = "#94a3b8"; }}
@@ -252,6 +386,7 @@ export default function InventarioPage() {
                         <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>edit</span>
                       </button>
                       <button
+                        onClick={() => handleDelete(p._id)}
                         className="p-1.5 rounded-lg text-slate-400 transition-colors"
                         onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.08)"; e.currentTarget.style.color = "#ef4444"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.color = "#94a3b8"; }}
@@ -288,7 +423,8 @@ export default function InventarioPage() {
             </thead>
             <tbody>
               {filtered.map((p) => {
-                const st = statusStyle[p.status];
+                const displayStatus = getDisplayStatus(p);
+                const st = statusStyle[displayStatus];
                 return (
                   <tr
                     key={p.sku}
@@ -329,12 +465,13 @@ export default function InventarioPage() {
                         className="px-2.5 py-1 rounded-full text-xs font-semibold"
                         style={{ backgroundColor: st.bg, color: st.color }}
                       >
-                        {p.status}
+                        {displayStatus}
                       </span>
                     </td>
                     <td className="px-5 py-3.5 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button
+                          onClick={() => openEdit(p)}
                           className="p-1.5 rounded-lg text-slate-400 transition-colors"
                           onMouseEnter={(e) => {
                             e.currentTarget.style.backgroundColor = "rgba(235,71,139,0.1)";
@@ -350,6 +487,7 @@ export default function InventarioPage() {
                           </span>
                         </button>
                         <button
+                          onClick={() => handleDelete(p._id)}
                           className="p-1.5 rounded-lg text-slate-400 transition-colors"
                           onMouseEnter={(e) => {
                             e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.08)";
@@ -386,7 +524,7 @@ export default function InventarioPage() {
           className="p-4 flex items-center justify-between text-sm text-slate-500"
           style={{ borderTop: "1px solid rgba(235,71,139,0.1)" }}
         >
-          <p>Mostrando {filtered.length} de {allProducts.length} productos</p>
+          <p>Mostrando {filtered.length} de {productsData.length} productos</p>
           <div className="flex gap-2">
             <button
               className="p-2 rounded-lg opacity-50 cursor-not-allowed"
@@ -428,12 +566,12 @@ export default function InventarioPage() {
               className="p-6 flex items-center justify-between sticky top-0 bg-white z-10"
               style={{ borderBottom: "1px solid rgba(235,71,139,0.1)" }}
             >
-              <h2 className="text-xl font-bold text-slate-900">Nuevo Producto</h2>
+              <h2 className="text-xl font-bold text-slate-900">{editingId ? "Editar Producto" : "Nuevo Producto"}</h2>
               <button onClick={handleCloseModal} className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "rgba(235,71,139,0.1)" }}>
                 <span className="material-symbols-outlined" style={{ color: "#eb478b", fontSize: "20px" }}>close</span>
               </button>
             </div>
-            <form className="p-6 space-y-5" onSubmit={(e) => { e.preventDefault(); handleCloseModal(); }}>
+            <form className="p-6 space-y-5" onSubmit={handleSubmit}>
 
               {/* Images upload — 1 to 3 */}
               <div>
@@ -481,7 +619,7 @@ export default function InventarioPage() {
               {/* Nombre */}
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Nombre del Producto *</label>
-                <input type="text" required className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-pink-400" placeholder="Ej: Vestido Elegante" />
+                <input value={form.name} onChange={(e) => setForm((current) => ({ ...current, name: e.target.value }))} type="text" required className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-pink-400" placeholder="Ej: Vestido Elegante" />
               </div>
 
               {/* SKU con 3 modos */}
@@ -538,17 +676,18 @@ export default function InventarioPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Precio *</label>
-                  <input type="number" required step="0.01" min="0" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-pink-400" placeholder="0.00" />
+                  <input value={form.price} onChange={(e) => setForm((current) => ({ ...current, price: e.target.value }))} type="number" required step="0.01" min="0" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-pink-400" placeholder="0.00" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Stock *</label>
-                  <input type="number" required min="0" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-pink-400" placeholder="0" />
+                  <input value={form.stock} onChange={(e) => setForm((current) => ({ ...current, stock: e.target.value }))} type="number" required min="0" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-pink-400" placeholder="0" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Categoría *</label>
                   <select
                     required
-                    onChange={(e) => { if (skuMode === "auto") setSkuValue(generateSku(e.target.value)); }}
+                    value={form.category}
+                    onChange={(e) => { setForm((current) => ({ ...current, category: e.target.value })); if (skuMode === "auto") setSkuValue(generateSku(e.target.value)); }}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-pink-400"
                   >
                     <option value="">Seleccionar</option>
@@ -560,12 +699,12 @@ export default function InventarioPage() {
               {/* Descripción */}
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Descripción</label>
-                <textarea rows="3" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-pink-400 resize-none" placeholder="Descripción del producto..." />
+                <textarea value={form.description} onChange={(e) => setForm((current) => ({ ...current, description: e.target.value }))} rows="3" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-pink-400 resize-none" placeholder="Descripción del producto..." />
               </div>
 
               <div className="flex gap-3 pt-1">
                 <button type="button" onClick={handleCloseModal} className="flex-1 px-4 py-2.5 rounded-xl font-semibold text-sm" style={{ backgroundColor: "rgba(235,71,139,0.1)", color: "#eb478b" }}>Cancelar</button>
-                <button type="submit" className="flex-1 px-4 py-2.5 rounded-xl font-semibold text-sm text-white" style={{ backgroundColor: "#eb478b" }}>Guardar Producto</button>
+                <button type="submit" disabled={saving} className="flex-1 px-4 py-2.5 rounded-xl font-semibold text-sm text-white" style={{ backgroundColor: saving ? "#f3a7c7" : "#eb478b" }}>{saving ? "Guardando..." : editingId ? "Actualizar Producto" : "Guardar Producto"}</button>
               </div>
             </form>
           </div>

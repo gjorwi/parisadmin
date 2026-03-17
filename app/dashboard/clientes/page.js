@@ -1,224 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import api from "../../../lib/api";
 
 const PRIMARY = "#eb478b";
-
-/* ─── Seed data ─────────────────────────────────────── */
-const initialClientes = [
-  {
-    id: "C001",
-    nombre: "María González",
-    cedula: "V-12.345.678",
-    email: "maria@email.com",
-    telefono: "+58 412-1234567",
-    direccion: "Av. Principal, Res. Las Flores, Apto 4B, Caracas",
-    facturas: [
-      {
-        id: "F-2026-001",
-        fecha: "2026-01-15",
-        items: [
-          { nombre: "Silk Garden Maxi Dress", qty: 1, precio: 495 },
-          { nombre: "Midnight Velvet Clutch", qty: 2, precio: 285 },
-        ],
-        total: 1065,
-        pagado: 600,
-        status: "parcial",
-      },
-      {
-        id: "F-2026-008",
-        fecha: "2026-02-20",
-        items: [{ nombre: "Parisian Night Heels", qty: 1, precio: 320 }],
-        total: 320,
-        pagado: 0,
-        status: "pendiente",
-      },
-      {
-        id: "F-2025-089",
-        fecha: "2025-11-10",
-        items: [{ nombre: "L'Amour Silk Scarf", qty: 3, precio: 125 }],
-        total: 375,
-        pagado: 375,
-        status: "pagada",
-      },
-    ],
-  },
-  {
-    id: "C002",
-    nombre: "Camila Rodríguez",
-    cedula: "V-18.765.432",
-    email: "camila@email.com",
-    telefono: "+58 414-7654321",
-    direccion: "Urb. Santa Fe, Calle 3, Casa 15, Caracas",
-    facturas: [
-      {
-        id: "F-2026-012",
-        fecha: "2026-03-01",
-        items: [{ nombre: "Bordeaux Wrap Coat", qty: 1, precio: 680 }],
-        total: 680,
-        pagado: 200,
-        status: "parcial",
-      },
-      {
-        id: "F-2026-015",
-        fecha: "2026-03-10",
-        items: [
-          { nombre: "Pearl Drop Earrings", qty: 2, precio: 95 },
-          { nombre: "Golden Hour Bracelet", qty: 1, precio: 145 },
-        ],
-        total: 335,
-        pagado: 0,
-        status: "pendiente",
-      },
-    ],
-  },
-  {
-    id: "C003",
-    nombre: "Valentina Torres",
-    cedula: "V-20.111.222",
-    email: "vale@email.com",
-    telefono: "+58 416-1112222",
-    direccion: "Torre Empresarial, Piso 8, Of. 803, Caracas",
-    facturas: [
-      {
-        id: "F-2026-004",
-        fecha: "2026-01-28",
-        items: [
-          { nombre: "Suede Ankle Boots", qty: 1, precio: 420 },
-          { nombre: "Ivory Lace Blouse", qty: 2, precio: 175 },
-        ],
-        total: 770,
-        pagado: 770,
-        status: "pagada",
-      },
-      {
-        id: "F-2026-009",
-        fecha: "2026-02-15",
-        items: [
-          { nombre: "Rose Petal Blouse", qty: 1, precio: 210 },
-          { nombre: "Floral Midi Skirt", qty: 1, precio: 245 },
-        ],
-        total: 455,
-        pagado: 200,
-        status: "parcial",
-      },
-      {
-        id: "F-2026-018",
-        fecha: "2026-03-05",
-        items: [{ nombre: "Diamond Stud Set", qty: 1, precio: 320 }],
-        total: 320,
-        pagado: 0,
-        status: "pendiente",
-      },
-    ],
-  },
-  {
-    id: "C004",
-    nombre: "Lucía Fernández",
-    cedula: "V-15.333.444",
-    email: "lucia@email.com",
-    telefono: "+58 424-3334444",
-    direccion: "Av. Los Mangos, Qta. Esperanza, La Florida",
-    facturas: [
-      {
-        id: "F-2026-017",
-        fecha: "2026-03-05",
-        items: [
-          { nombre: "Floral Midi Skirt", qty: 2, precio: 245 },
-          { nombre: "Leather Belt Cincher", qty: 1, precio: 85 },
-        ],
-        total: 575,
-        pagado: 0,
-        status: "pendiente",
-      },
-      {
-        id: "F-2026-022",
-        fecha: "2026-03-12",
-        items: [{ nombre: "Satin Evening Bag", qty: 1, precio: 340 }],
-        total: 340,
-        pagado: 150,
-        status: "parcial",
-      },
-    ],
-  },
-  {
-    id: "C005",
-    nombre: "Isabella Martínez",
-    cedula: "V-22.555.666",
-    email: "isa@email.com",
-    telefono: "+58 426-5556666",
-    direccion: "Res. El Paraíso, Bloque 3, Apto 2A, Los Teques",
-    facturas: [
-      {
-        id: "F-2025-201",
-        fecha: "2025-12-01",
-        items: [{ nombre: "Diamond Stud Set", qty: 1, precio: 320 }],
-        total: 320,
-        pagado: 320,
-        status: "pagada",
-      },
-      {
-        id: "F-2026-002",
-        fecha: "2026-01-20",
-        items: [
-          { nombre: "Bordeaux Wrap Coat", qty: 1, precio: 680 },
-          { nombre: "Leather Belt Cincher", qty: 1, precio: 85 },
-        ],
-        total: 765,
-        pagado: 300,
-        status: "parcial",
-      },
-      {
-        id: "F-2026-011",
-        fecha: "2026-02-28",
-        items: [{ nombre: "Satin Evening Bag", qty: 2, precio: 340 }],
-        total: 680,
-        pagado: 0,
-        status: "pendiente",
-      },
-      {
-        id: "F-2026-020",
-        fecha: "2026-03-10",
-        items: [
-          { nombre: "Parisian Night Heels", qty: 1, precio: 320 },
-          { nombre: "Golden Hour Bracelet", qty: 1, precio: 145 },
-        ],
-        total: 465,
-        pagado: 100,
-        status: "parcial",
-      },
-    ],
-  },
-  {
-    id: "C006",
-    nombre: "Sofía López",
-    cedula: "V-19.777.888",
-    email: "sofia@email.com",
-    telefono: "+58 412-7778888",
-    direccion: "Calle Real de Petare #45, Piso 2, Caracas",
-    facturas: [
-      {
-        id: "F-2026-019",
-        fecha: "2026-03-08",
-        items: [
-          { nombre: "Rose Petal Blouse", qty: 1, precio: 210 },
-          { nombre: "Kitten Heel Mules", qty: 1, precio: 195 },
-        ],
-        total: 405,
-        pagado: 200,
-        status: "parcial",
-      },
-      {
-        id: "F-2026-023",
-        fecha: "2026-03-14",
-        items: [{ nombre: "Chanel Inspired Flats", qty: 1, precio: 180 }],
-        total: 180,
-        pagado: 0,
-        status: "pendiente",
-      },
-    ],
-  },
-];
 
 /* ─── Helpers ────────────────────────────────────────── */
 const calcSaldo = (f) => f.total - f.pagado;
@@ -471,22 +256,56 @@ function CancelarModal({ factura, onClose, onConfirm }) {
 
 /* ─── Main Page ──────────────────────────────────────── */
 export default function ClientesPage() {
-  const [clientes, setClientes] = useState(initialClientes);
+  const [clientes, setClientes] = useState([]);
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState("");
   const [facturasView, setFacturasView] = useState("grid");
   const [filterDeuda, setFilterDeuda] = useState("todos"); // todos | con-deuda | sin-deuda
-  const [abonoModal, setAbonoModal] = useState(null); // factura obj
-  const [cancelModal, setCancelModal] = useState(null); // factura obj
-  const [toast, setToast] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const showToast = (msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(""), 3500);
-  };
+  useEffect(() => {
+    loadCustomers();
+  }, []);
+
+  async function loadCustomers() {
+    try {
+      setLoading(true);
+      const data = await api.customers();
+      const normalized = data.map((customer) => ({
+        id: customer._id,
+        nombre: customer.nombre || "",
+        cedula: customer.cedula || "",
+        email: customer.email || "",
+        telefono: customer.telefono || "",
+        direccion: customer.direccion || "",
+        facturas: (customer.facturas || []).map((factura) => ({
+          id: factura.id,
+          fecha: factura.fecha,
+          items: (factura.items || []).map((item) => ({
+            nombre: item.nombre,
+            qty: Number(item.qty || 0),
+            precio: Number(item.precio || 0),
+          })),
+          total: Number(factura.total || 0),
+          pagado: Number(factura.pagado || 0),
+          status: factura.status || "pendiente",
+        })),
+      }));
+      setClientes(normalized);
+      setSelected((current) => normalized.find((c) => c.id === current?.id) || null);
+      setError("");
+    } catch (err) {
+      setClientes([]);
+      setSelected(null);
+      setError(err.message || "No fue posible cargar los clientes");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   /* Filtered list */
-  const filteredClientes = clientes.filter((c) => {
+  const filteredClientes = useMemo(() => clientes.filter((c) => {
     const matchSearch =
       c.nombre.toLowerCase().includes(search.toLowerCase()) ||
       c.cedula.includes(search) ||
@@ -495,60 +314,7 @@ export default function ClientesPage() {
     if (filterDeuda === "con-deuda") return matchSearch && deuda > 0;
     if (filterDeuda === "sin-deuda") return matchSearch && deuda === 0;
     return matchSearch;
-  });
-
-  /* Sync selected after mutation */
-  const refreshSelected = (updatedClientes, id) => {
-    setClientes(updatedClientes);
-    setSelected(updatedClientes.find((c) => c.id === id) || null);
-  };
-
-  /* Handle abono save */
-  const handleAbonoSave = ({ monto, metodo, fecha, obs }) => {
-    const facturaId = abonoModal.id;
-    const clienteId = selected.id;
-
-    const updated = clientes.map((c) => {
-      if (c.id !== clienteId) return c;
-      return {
-        ...c,
-        facturas: c.facturas.map((f) => {
-          if (f.id !== facturaId) return f;
-          const newPagado = f.pagado + monto;
-          const newSaldo = f.total - newPagado;
-          return {
-            ...f,
-            pagado: newPagado,
-            status: newSaldo <= 0 ? "pagada" : "parcial",
-          };
-        }),
-      };
-    });
-
-    refreshSelected(updated, clienteId);
-    setAbonoModal(null);
-    showToast(`Abono de ${fmt(monto)} registrado en ${facturaId}`);
-  };
-
-  /* Handle cancel factura */
-  const handleCancelar = () => {
-    const facturaId = cancelModal.id;
-    const clienteId = selected.id;
-
-    const updated = clientes.map((c) => {
-      if (c.id !== clienteId) return c;
-      return {
-        ...c,
-        facturas: c.facturas.map((f) =>
-          f.id === facturaId ? { ...f, status: "cancelada", pagado: f.total } : f
-        ),
-      };
-    });
-
-    refreshSelected(updated, clienteId);
-    setCancelModal(null);
-    showToast(`Factura ${facturaId} cancelada`);
-  };
+  }), [clientes, filterDeuda, search]);
 
   /* Ledger movements from facturas */
   const buildMovimientos = (cliente) => {
@@ -594,35 +360,6 @@ export default function ClientesPage() {
 
   return (
     <>
-      {/* Toast */}
-      {toast && (
-        <div
-          className="fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl shadow-xl text-sm font-semibold flex items-center gap-2 text-white"
-          style={{ backgroundColor: "#059669" }}
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
-            check_circle
-          </span>
-          {toast}
-        </div>
-      )}
-
-      {/* Modals */}
-      {abonoModal && (
-        <AbonoModal
-          factura={abonoModal}
-          onClose={() => setAbonoModal(null)}
-          onSave={handleAbonoSave}
-        />
-      )}
-      {cancelModal && (
-        <CancelarModal
-          factura={cancelModal}
-          onClose={() => setCancelModal(null)}
-          onConfirm={handleCancelar}
-        />
-      )}
-
       <div className="flex flex-col lg:flex-row gap-4 lg:gap-5">
         {/* ── LEFT: Customer List ─────────────────── */}
         <div
@@ -676,9 +413,23 @@ export default function ClientesPage() {
             </div>
           </div>
 
+          {error && (
+            <div className="mx-3 mt-3 p-3 rounded-xl text-xs" style={{ backgroundColor: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca" }}>
+              {error}
+            </div>
+          )}
+
           {/* List */}
           <div className="flex-1 overflow-y-auto">
-            {filteredClientes.map((c) => {
+            {loading && (
+              <div className="py-12 text-center text-slate-400">
+                <span className="material-symbols-outlined" style={{ fontSize: "36px" }}>
+                  progress_activity
+                </span>
+                <p className="text-sm mt-2">Cargando clientes...</p>
+              </div>
+            )}
+            {!loading && filteredClientes.map((c) => {
               const deuda = clienteDeuda(c);
               const isSelected = selected?.id === c.id;
               return (
@@ -735,7 +486,7 @@ export default function ClientesPage() {
                 </button>
               );
             })}
-            {filteredClientes.length === 0 && (
+            {!loading && filteredClientes.length === 0 && (
               <div className="py-12 text-center text-slate-400">
                 <span
                   className="material-symbols-outlined"
@@ -743,7 +494,7 @@ export default function ClientesPage() {
                 >
                   person_off
                 </span>
-                <p className="text-sm mt-2">Sin resultados</p>
+                <p className="text-sm mt-2">{clientes.length === 0 ? "No hay clientes registrados" : "Sin resultados"}</p>
               </div>
             )}
           </div>
@@ -753,7 +504,7 @@ export default function ClientesPage() {
             className="p-3 text-xs text-slate-500 text-center"
             style={{ borderTop: "1px solid rgba(235,71,139,0.1)" }}
           >
-            {filteredClientes.length} clientes encontrados
+            {loading ? "Cargando..." : `${filteredClientes.length} clientes encontrados`}
           </div>
         </div>
 
@@ -764,9 +515,9 @@ export default function ClientesPage() {
             <span className="material-symbols-outlined mb-3" style={{ fontSize: "56px" }}>
               manage_accounts
             </span>
-            <p className="font-semibold text-slate-500">Selecciona un cliente</p>
+            <p className="font-semibold text-slate-500">{clientes.length === 0 ? "No hay clientes registrados" : "Selecciona un cliente"}</p>
             <p className="text-sm text-slate-400 mt-1">
-              para ver sus facturas y estado de cuenta
+              {clientes.length === 0 ? "Los clientes aparecerán aquí cuando existan en la base de datos" : "para ver sus facturas y estado de cuenta"}
             </p>
           </div>
         ) : (
@@ -967,27 +718,6 @@ export default function ClientesPage() {
                           <p className="text-sm font-bold" style={{ color: saldo > 0 ? PRIMARY : "#10b981" }}>{fmt(saldo)}</p>
                         </div>
                       </div>
-                      {/* Actions */}
-                      {activa && (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => setAbonoModal(f)}
-                            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold text-white"
-                            style={{ backgroundColor: "#10b981" }}
-                          >
-                            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>add_card</span>
-                            Abonar
-                          </button>
-                          <button
-                            onClick={() => setCancelModal(f)}
-                            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold text-white"
-                            style={{ backgroundColor: "#ef4444" }}
-                          >
-                            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>cancel</span>
-                            Cancelar
-                          </button>
-                        </div>
-                      )}
                     </div>
                       );
                     })}
@@ -1064,41 +794,7 @@ export default function ClientesPage() {
                             </span>
                           </td>
                           <td className="px-4 py-3" style={{ minWidth: "180px" }}>
-                            {activa && (
-                              <div className="flex gap-1 flex-wrap">
-                                <button
-                                  onClick={() => setAbonoModal(f)}
-                                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white transition-all whitespace-nowrap"
-                                  style={{ backgroundColor: "#10b981" }}
-                                  title="Agregar abono"
-                                >
-                                  <span
-                                    className="material-symbols-outlined"
-                                    style={{ fontSize: "14px" }}
-                                  >
-                                    add_card
-                                  </span>
-                                  Abonar
-                                </button>
-                                <button
-                                  onClick={() => setCancelModal(f)}
-                                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white transition-all whitespace-nowrap"
-                                  style={{ backgroundColor: "#ef4444" }}
-                                  title="Cancelar factura"
-                                >
-                                  <span
-                                    className="material-symbols-outlined"
-                                    style={{ fontSize: "14px" }}
-                                  >
-                                    cancel
-                                  </span>
-                                  Cancelar
-                                </button>
-                              </div>
-                            )}
-                            {!activa && (
-                              <span className="text-xs text-slate-400">—</span>
-                            )}
+                            <span className="text-xs text-slate-400">Solo lectura</span>
                           </td>
                         </tr>
                       );

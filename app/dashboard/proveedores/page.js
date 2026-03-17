@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import api from "../../../lib/api";
 
 const suppliers = [
   {
@@ -92,26 +93,120 @@ const categoryColors = {
 };
 
 export default function ProveedoresPage() {
+  const emptyForm = {
+    name: "",
+    contact: "",
+    email: "",
+    phone: "",
+    country: "",
+    address: "",
+    notes: "",
+    isActive: true,
+  };
+
   const [search, setSearch] = useState("");
-  const [view, setView] = useState("grid"); // 'grid' | 'list'
+  const [view, setView] = useState("grid");
+  const [suppliersData, setSuppliersData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [showModal, setShowModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState(emptyForm);
 
-  const filtered = suppliers.filter(
-    (s) =>
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.contact.toLowerCase().includes(search.toLowerCase()) ||
-      s.country.toLowerCase().includes(search.toLowerCase())
-  );
+  useEffect(() => {
+    loadSuppliers();
+  }, []);
 
-  const renderStars = (rating) =>
-    Array.from({ length: 5 }, (_, i) => (
-      <span
-        key={i}
-        className="material-symbols-outlined"
-        style={{ fontSize: "14px", color: i < rating ? "#f59e0b" : "#e2e8f0" }}
-      >
-        star
-      </span>
-    ));
+  async function loadSuppliers() {
+    try {
+      setLoading(true);
+      const data = await api.suppliers();
+      setSuppliersData(data);
+      setError("");
+    } catch (err) {
+      setError(err.message || "No fue posible cargar proveedores");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const filtered = useMemo(() => {
+    return suppliersData.filter((s) => {
+      const term = search.toLowerCase();
+      return (
+        s.name?.toLowerCase().includes(term) ||
+        s.contact?.toLowerCase().includes(term) ||
+        s.country?.toLowerCase().includes(term) ||
+        s.email?.toLowerCase().includes(term)
+      );
+    });
+  }, [search, suppliersData]);
+
+  const counts = useMemo(() => ({
+    total: suppliersData.length,
+    active: suppliersData.filter((s) => s.isActive).length,
+    inactive: suppliersData.filter((s) => !s.isActive).length,
+    countries: new Set(suppliersData.map((s) => s.country).filter(Boolean)).size,
+  }), [suppliersData]);
+
+  function resetForm() {
+    setForm(emptyForm);
+    setEditingId(null);
+    setShowModal(false);
+  }
+
+  function openCreate() {
+    setForm(emptyForm);
+    setEditingId(null);
+    setShowModal(true);
+  }
+
+  function openEdit(item) {
+    setForm({
+      name: item.name || "",
+      contact: item.contact || "",
+      email: item.email || "",
+      phone: item.phone || "",
+      country: item.country || "",
+      address: item.address || "",
+      notes: item.notes || "",
+      isActive: Boolean(item.isActive),
+    });
+    setEditingId(item._id);
+    setShowModal(true);
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+
+    try {
+      setSaving(true);
+      if (editingId) {
+        await api.updateSupplier(editingId, form);
+      } else {
+        await api.createSupplier(form);
+      }
+      await loadSuppliers();
+      resetForm();
+    } catch (err) {
+      setError(err.message || "No fue posible guardar el proveedor");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id) {
+    const confirmed = window.confirm("¿Deseas eliminar este proveedor?");
+    if (!confirmed) return;
+
+    try {
+      await api.deleteSupplier(id);
+      await loadSuppliers();
+    } catch (err) {
+      setError(err.message || "No fue posible eliminar el proveedor");
+    }
+  }
 
   return (
     <div>
@@ -122,26 +217,20 @@ export default function ProveedoresPage() {
         </p>
       </div>
 
-      {/* Summary */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         {[
-          { label: "Total Proveedores", value: suppliers.length, icon: "group", color: "#eb478b" },
-          { label: "Activos", value: suppliers.filter((s) => s.status === "Activo").length, icon: "verified", color: "#10b981" },
-          { label: "Inactivos", value: suppliers.filter((s) => s.status === "Inactivo").length, icon: "pause_circle", color: "#f59e0b" },
-          { label: "Países", value: new Set(suppliers.map((s) => s.country)).size, icon: "public", color: "#3b82f6" },
+          { label: "Total Proveedores", value: counts.total, icon: "group", color: "#eb478b" },
+          { label: "Activos", value: counts.active, icon: "verified", color: "#10b981" },
+          { label: "Inactivos", value: counts.inactive, icon: "pause_circle", color: "#f59e0b" },
+          { label: "Países", value: counts.countries, icon: "public", color: "#3b82f6" },
         ].map((c) => (
           <div
             key={c.label}
             className="bg-white p-4 rounded-xl flex items-center gap-4"
             style={{ border: "1px solid rgba(235,71,139,0.1)" }}
           >
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center"
-              style={{ backgroundColor: `${c.color}18` }}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: "24px", color: c.color }}>
-                {c.icon}
-              </span>
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${c.color}18` }}>
+              <span className="material-symbols-outlined" style={{ fontSize: "24px", color: c.color }}>{c.icon}</span>
             </div>
             <div>
               <p className="text-2xl font-bold text-slate-900">{c.value}</p>
@@ -151,20 +240,16 @@ export default function ProveedoresPage() {
         ))}
       </div>
 
-      {/* Toolbar */}
-      <div
-        className="bg-white rounded-xl mb-0 overflow-hidden"
-        style={{ border: "1px solid rgba(235,71,139,0.1)" }}
-      >
-        <div
-          className="p-4 flex flex-wrap items-center gap-3"
-          style={{ borderBottom: "1px solid rgba(235,71,139,0.1)" }}
-        >
+      {error && (
+        <div className="mb-4 p-4 rounded-xl text-sm" style={{ backgroundColor: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca" }}>
+          {error}
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl mb-0 overflow-hidden" style={{ border: "1px solid rgba(235,71,139,0.1)" }}>
+        <div className="p-4 flex flex-wrap items-center gap-3" style={{ borderBottom: "1px solid rgba(235,71,139,0.1)" }}>
           <div className="relative flex-1 min-w-48">
-            <span
-              className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              style={{ fontSize: "18px" }}
-            >
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" style={{ fontSize: "18px" }}>
               search
             </span>
             <input
@@ -176,11 +261,7 @@ export default function ProveedoresPage() {
             />
           </div>
 
-          {/* View toggle */}
-          <div
-            className="flex rounded-lg overflow-hidden"
-            style={{ border: "1px solid rgba(235,71,139,0.2)" }}
-          >
+          <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid rgba(235,71,139,0.2)" }}>
             {[
               { v: "grid", icon: "grid_view" },
               { v: "list", icon: "view_list" },
@@ -189,271 +270,80 @@ export default function ProveedoresPage() {
                 key={v}
                 onClick={() => setView(v)}
                 className="p-2 transition-colors"
-                style={
-                  view === v
-                    ? { backgroundColor: "#eb478b", color: "#fff" }
-                    : { backgroundColor: "transparent", color: "#64748b" }
-                }
+                style={view === v ? { backgroundColor: "#eb478b", color: "#fff" } : { backgroundColor: "transparent", color: "#64748b" }}
               >
-                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
-                  {icon}
-                </span>
+                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{icon}</span>
               </button>
             ))}
           </div>
 
-          <button
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white"
-            style={{ backgroundColor: "#eb478b" }}
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>
-              add
-            </span>
+          <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: "#eb478b" }}>
+            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>add</span>
             Nuevo Proveedor
           </button>
         </div>
 
-        {/* Grid view */}
-        {view === "grid" ? (
+        {loading ? (
+          <div className="py-12 text-center text-slate-400 text-sm">Cargando proveedores...</div>
+        ) : view === "grid" ? (
           <div className="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map((s) => (
-              <div
-                key={s.id}
-                className="p-5 rounded-xl transition-all cursor-pointer"
-                style={{ border: "1px solid rgba(235,71,139,0.1)", backgroundColor: "#fafafa" }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "rgba(235,71,139,0.3)";
-                  e.currentTarget.style.backgroundColor = "#fff";
-                  e.currentTarget.style.boxShadow = "0 4px 12px rgba(235,71,139,0.08)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "rgba(235,71,139,0.1)";
-                  e.currentTarget.style.backgroundColor = "#fafafa";
-                  e.currentTarget.style.boxShadow = "";
-                }}
-              >
-                {/* Header */}
+              <div key={s._id} className="p-5 rounded-xl transition-all" style={{ border: "1px solid rgba(235,71,139,0.1)", backgroundColor: "#fafafa" }}>
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div
-                      className="w-12 h-12 rounded-xl flex items-center justify-center text-lg font-bold"
-                      style={{
-                        backgroundColor: "rgba(235,71,139,0.12)",
-                        color: "#eb478b",
-                      }}
-                    >
-                      {s.name.substring(0, 2).toUpperCase()}
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center text-lg font-bold" style={{ backgroundColor: "rgba(235,71,139,0.12)", color: "#eb478b" }}>
+                      {s.name?.substring(0, 2).toUpperCase()}
                     </div>
                     <div>
                       <h3 className="font-bold text-slate-900 text-sm">{s.name}</h3>
-                      <p className="text-xs text-slate-500">{s.country}</p>
+                      <p className="text-xs text-slate-500">{s.country || "Sin país"}</p>
                     </div>
                   </div>
-                  <span
-                    className="px-2 py-0.5 rounded-full text-xs font-semibold"
-                    style={
-                      s.status === "Activo"
-                        ? { backgroundColor: "rgba(16,185,129,0.1)", color: "#059669" }
-                        : { backgroundColor: "rgba(245,158,11,0.1)", color: "#d97706" }
-                    }
-                  >
-                    {s.status}
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={s.isActive ? { backgroundColor: "rgba(16,185,129,0.1)", color: "#059669" } : { backgroundColor: "rgba(245,158,11,0.1)", color: "#d97706" }}>
+                    {s.isActive ? "Activo" : "Inactivo"}
                   </span>
                 </div>
 
-                {/* Contact */}
-                <div className="space-y-2 mb-4">
-                  <div className="flex items-center gap-2 text-xs text-slate-600">
-                    <span className="material-symbols-outlined" style={{ fontSize: "14px", color: "#eb478b" }}>
-                      person
-                    </span>
-                    {s.contact}
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-slate-600">
-                    <span className="material-symbols-outlined" style={{ fontSize: "14px", color: "#eb478b" }}>
-                      mail
-                    </span>
-                    {s.email}
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-slate-600">
-                    <span className="material-symbols-outlined" style={{ fontSize: "14px", color: "#eb478b" }}>
-                      phone
-                    </span>
-                    {s.phone}
-                  </div>
+                <div className="space-y-2 mb-4 text-xs text-slate-600">
+                  <div className="flex items-center gap-2"><span className="material-symbols-outlined" style={{ fontSize: "14px", color: "#eb478b" }}>person</span>{s.contact || "Sin contacto"}</div>
+                  <div className="flex items-center gap-2"><span className="material-symbols-outlined" style={{ fontSize: "14px", color: "#eb478b" }}>mail</span>{s.email || "Sin correo"}</div>
+                  <div className="flex items-center gap-2"><span className="material-symbols-outlined" style={{ fontSize: "14px", color: "#eb478b" }}>phone</span>{s.phone || "Sin teléfono"}</div>
                 </div>
 
-                {/* Categories */}
-                <div className="flex flex-wrap gap-1 mb-4">
-                  {s.categories.map((cat) => {
-                    const cs = categoryColors[cat] || { bg: "#f1f5f9", color: "#475569" };
-                    return (
-                      <span
-                        key={cat}
-                        className="px-2 py-0.5 rounded text-xs font-medium"
-                        style={{ backgroundColor: cs.bg, color: cs.color }}
-                      >
-                        {cat}
-                      </span>
-                    );
-                  })}
-                </div>
+                <div className="text-xs text-slate-500 mb-4 min-h-10">{s.address || s.notes || "Sin observaciones"}</div>
 
-                {/* Footer */}
-                <div
-                  className="flex items-center justify-between pt-3"
-                  style={{ borderTop: "1px solid rgba(235,71,139,0.08)" }}
-                >
-                  <div>
-                    <p className="text-xs text-slate-500">Productos</p>
-                    <p className="text-sm font-bold text-slate-900">{s.products}</p>
-                  </div>
-                  <div className="flex">{renderStars(s.rating)}</div>
-                  <div className="flex gap-1">
-                    <button
-                      className="p-1.5 rounded-lg text-slate-400 transition-colors"
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = "rgba(235,71,139,0.1)";
-                        e.currentTarget.style.color = "#eb478b";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = "transparent";
-                        e.currentTarget.style.color = "#94a3b8";
-                      }}
-                    >
-                      <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>
-                        edit
-                      </span>
-                    </button>
-                    <button
-                      className="p-1.5 rounded-lg text-slate-400 transition-colors"
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.08)";
-                        e.currentTarget.style.color = "#ef4444";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = "transparent";
-                        e.currentTarget.style.color = "#94a3b8";
-                      }}
-                    >
-                      <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>
-                        delete
-                      </span>
-                    </button>
-                  </div>
+                <div className="flex items-center justify-end gap-1 pt-3" style={{ borderTop: "1px solid rgba(235,71,139,0.08)" }}>
+                  <button onClick={() => openEdit(s)} className="p-1.5 rounded-lg text-slate-400 transition-colors" onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "rgba(235,71,139,0.1)"; e.currentTarget.style.color = "#eb478b"; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.color = "#94a3b8"; }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>edit</span>
+                  </button>
+                  <button onClick={() => handleDelete(s._id)} className="p-1.5 rounded-lg text-slate-400 transition-colors" onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.08)"; e.currentTarget.style.color = "#ef4444"; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.color = "#94a3b8"; }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>delete</span>
+                  </button>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          /* List view */
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
                 <tr style={{ backgroundColor: "#f8f6f7" }}>
-                  {["Proveedor", "Contacto", "País", "Categorías", "Productos", "Valoración", "Estado", "Acciones"].map(
-                    (h, i) => (
-                      <th
-                        key={h}
-                        className={`px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 ${i === 7 ? "text-right" : ""}`}
-                      >
-                        {h}
-                      </th>
-                    )
-                  )}
+                  {["Proveedor", "Contacto", "País", "Teléfono", "Estado", "Acciones"].map((h, i) => (
+                    <th key={h} className={`px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 ${i === 5 ? "text-right" : ""}`}>
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((s) => (
-                  <tr
-                    key={s.id}
-                    className="transition-colors"
-                    style={{ borderTop: "1px solid rgba(235,71,139,0.05)" }}
-                    onMouseEnter={(e) =>
-                      (e.currentTarget.style.backgroundColor = "rgba(235,71,139,0.02)")
-                    }
-                    onMouseLeave={(e) =>
-                      (e.currentTarget.style.backgroundColor = "transparent")
-                    }
-                  >
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold"
-                          style={{ backgroundColor: "rgba(235,71,139,0.12)", color: "#eb478b" }}
-                        >
-                          {s.name.substring(0, 2).toUpperCase()}
-                        </div>
-                        <span className="font-semibold text-sm text-slate-900">{s.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <p className="text-sm text-slate-700">{s.contact}</p>
-                      <p className="text-xs text-slate-500">{s.email}</p>
-                    </td>
-                    <td className="px-5 py-3.5 text-sm text-slate-600">{s.country}</td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex flex-wrap gap-1">
-                        {s.categories.map((cat) => {
-                          const cs = categoryColors[cat] || { bg: "#f1f5f9", color: "#475569" };
-                          return (
-                            <span
-                              key={cat}
-                              className="px-1.5 py-0.5 rounded text-xs font-medium"
-                              style={{ backgroundColor: cs.bg, color: cs.color }}
-                            >
-                              {cat}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5 text-sm font-bold text-slate-900">{s.products}</td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex">{renderStars(s.rating)}</div>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <span
-                        className="px-2.5 py-1 rounded-full text-xs font-semibold"
-                        style={
-                          s.status === "Activo"
-                            ? { backgroundColor: "rgba(16,185,129,0.1)", color: "#059669" }
-                            : { backgroundColor: "rgba(245,158,11,0.1)", color: "#d97706" }
-                        }
-                      >
-                        {s.status}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          className="p-1.5 rounded-lg text-slate-400 transition-colors"
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = "rgba(235,71,139,0.1)";
-                            e.currentTarget.style.color = "#eb478b";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = "transparent";
-                            e.currentTarget.style.color = "#94a3b8";
-                          }}
-                        >
-                          <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>edit</span>
-                        </button>
-                        <button
-                          className="p-1.5 rounded-lg text-slate-400 transition-colors"
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.08)";
-                            e.currentTarget.style.color = "#ef4444";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = "transparent";
-                            e.currentTarget.style.color = "#94a3b8";
-                          }}
-                        >
-                          <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>delete</span>
-                        </button>
-                      </div>
-                    </td>
+                  <tr key={s._id} style={{ borderTop: "1px solid rgba(235,71,139,0.05)" }}>
+                    <td className="px-5 py-3.5 font-semibold text-sm text-slate-900">{s.name}</td>
+                    <td className="px-5 py-3.5"><p className="text-sm text-slate-700">{s.contact || "-"}</p><p className="text-xs text-slate-500">{s.email || "-"}</p></td>
+                    <td className="px-5 py-3.5 text-sm text-slate-600">{s.country || "-"}</td>
+                    <td className="px-5 py-3.5 text-sm text-slate-600">{s.phone || "-"}</td>
+                    <td className="px-5 py-3.5"><span className="px-2.5 py-1 rounded-full text-xs font-semibold" style={s.isActive ? { backgroundColor: "rgba(16,185,129,0.1)", color: "#059669" } : { backgroundColor: "rgba(245,158,11,0.1)", color: "#d97706" }}>{s.isActive ? "Activo" : "Inactivo"}</span></td>
+                    <td className="px-5 py-3.5 text-right"><div className="flex items-center justify-end gap-1"><button onClick={() => openEdit(s)} className="p-1.5 rounded-lg text-slate-400 transition-colors"><span className="material-symbols-outlined" style={{ fontSize: "18px" }}>edit</span></button><button onClick={() => handleDelete(s._id)} className="p-1.5 rounded-lg text-slate-400 transition-colors"><span className="material-symbols-outlined" style={{ fontSize: "18px" }}>delete</span></button></div></td>
                   </tr>
                 ))}
               </tbody>
@@ -461,12 +351,54 @@ export default function ProveedoresPage() {
           </div>
         )}
 
-        {filtered.length === 0 && (
+        {!loading && filtered.length === 0 && (
           <div className="py-12 text-center text-slate-400 text-sm">
             No se encontraron proveedores con los criterios de búsqueda.
           </div>
         )}
       </div>
+
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={resetForm}>
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6 flex items-center justify-between sticky top-0 bg-white z-10" style={{ borderBottom: "1px solid rgba(235,71,139,0.1)" }}>
+              <h2 className="text-xl font-bold text-slate-900">{editingId ? "Editar Proveedor" : "Nuevo Proveedor"}</h2>
+              <button onClick={resetForm} className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "rgba(235,71,139,0.1)" }}>
+                <span className="material-symbols-outlined" style={{ color: "#eb478b", fontSize: "20px" }}>close</span>
+              </button>
+            </div>
+            <form className="p-6 space-y-4" onSubmit={handleSubmit}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {[
+                  ["name", "Proveedor"],
+                  ["contact", "Contacto"],
+                  ["email", "Correo"],
+                  ["phone", "Teléfono"],
+                  ["country", "País"],
+                  ["address", "Dirección"],
+                ].map(([key, label]) => (
+                  <div key={key}>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">{label}</label>
+                    <input value={form[key]} onChange={(e) => setForm((current) => ({ ...current, [key]: e.target.value }))} required={key === "name"} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-pink-400" />
+                  </div>
+                ))}
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Notas</label>
+                <textarea rows="3" value={form.notes} onChange={(e) => setForm((current) => ({ ...current, notes: e.target.value }))} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-pink-400 resize-none" />
+              </div>
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <input type="checkbox" checked={form.isActive} onChange={(e) => setForm((current) => ({ ...current, isActive: e.target.checked }))} />
+                Proveedor activo
+              </label>
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={resetForm} className="flex-1 px-4 py-2.5 rounded-xl font-semibold text-sm" style={{ backgroundColor: "rgba(235,71,139,0.1)", color: "#eb478b" }}>Cancelar</button>
+                <button type="submit" disabled={saving} className="flex-1 px-4 py-2.5 rounded-xl font-semibold text-sm text-white" style={{ backgroundColor: saving ? "#f3a7c7" : "#eb478b" }}>{saving ? "Guardando..." : editingId ? "Actualizar Proveedor" : "Guardar Proveedor"}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
