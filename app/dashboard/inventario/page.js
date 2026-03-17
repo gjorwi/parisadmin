@@ -47,6 +47,7 @@ export default function InventarioPage() {
   const [skuValue, setSkuValue] = useState("");
   const [productImages, setProductImages] = useState([null, null, null]);
   const [imageFiles, setImageFiles] = useState([null, null, null]);
+  const [existingImages, setExistingImages] = useState([null, null, null]);
   const [productsData, setProductsData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -80,10 +81,27 @@ export default function InventarioPage() {
   const handleImageChange = (idx, file) => {
     const updated = [...productImages];
     const updatedFiles = [...imageFiles];
+    const updatedExisting = [...existingImages];
     updated[idx] = file ? URL.createObjectURL(file) : null;
     updatedFiles[idx] = file || null;
+    if (file) {
+      updatedExisting[idx] = null;
+    }
     setProductImages(updated);
     setImageFiles(updatedFiles);
+    setExistingImages(updatedExisting);
+  };
+
+  const handleImageRemove = (idx) => {
+    const updated = [...productImages];
+    const updatedFiles = [...imageFiles];
+    const updatedExisting = [...existingImages];
+    updated[idx] = null;
+    updatedFiles[idx] = null;
+    updatedExisting[idx] = null;
+    setProductImages(updated);
+    setImageFiles(updatedFiles);
+    setExistingImages(updatedExisting);
   };
 
   const handleCloseModal = () => {
@@ -92,6 +110,7 @@ export default function InventarioPage() {
     setSkuValue("");
     setProductImages([null, null, null]);
     setImageFiles([null, null, null]);
+    setExistingImages([null, null, null]);
     setEditingId(null);
     setForm(emptyForm);
   };
@@ -113,7 +132,10 @@ export default function InventarioPage() {
 
   const counts = useMemo(() => ({
     total: productsData.length,
-    enStock: productsData.filter((p) => getDisplayStatus(p) === "En Stock").length,
+    enStock: productsData.filter((p) => {
+      const status = getDisplayStatus(p);
+      return status === "En Stock" || status === "Normal";
+    }).length,
     stockBajo: productsData.filter((p) => getDisplayStatus(p) === "Stock Bajo").length,
     agotados: productsData.filter((p) => getDisplayStatus(p) === "Agotado").length,
   }), [productsData]);
@@ -134,11 +156,13 @@ export default function InventarioPage() {
     });
     setSkuMode("manual");
     setSkuValue(product.sku || "");
+    const normalizedImages = [0, 1, 2].map((idx) => product.images?.[idx] || null);
     setProductImages([
-      product.images?.[0]?.url || null,
-      product.images?.[1]?.url || null,
-      product.images?.[2]?.url || null,
+      normalizedImages[0]?.url || null,
+      normalizedImages[1]?.url || null,
+      normalizedImages[2]?.url || null,
     ]);
+    setExistingImages(normalizedImages);
     setImageFiles([null, null, null]);
     setShowModal(true);
   }
@@ -161,14 +185,22 @@ export default function InventarioPage() {
     try {
       setSaving(true);
       if (editingId) {
-        await api.updateProduct(editingId, {
-          name: form.name,
-          sku: skuValue,
-          category: form.category,
-          price: Number(form.price),
-          stock: Number(form.stock),
-          description: form.description,
-        });
+        const body = new FormData();
+        body.append("name", form.name);
+        body.append("category", form.category);
+        body.append("price", String(Number(form.price)));
+        body.append("stock", String(Number(form.stock)));
+        body.append("description", form.description);
+        body.append(
+          "images",
+          JSON.stringify(
+            existingImages
+              .filter(Boolean)
+              .map((image) => ({ url: image.url, publicId: image.publicId }))
+          )
+        );
+        imageFiles.filter(Boolean).forEach((file) => body.append("images", file));
+        await api.updateProduct(editingId, body);
       } else {
         const body = new FormData();
         body.append("name", form.name);
@@ -592,7 +624,7 @@ export default function InventarioPage() {
                           <img src={productImages[idx]} alt="" className="w-full h-full object-cover" />
                           <button
                             type="button"
-                            onClick={(e) => { e.preventDefault(); handleImageChange(idx, null); }}
+                            onClick={(e) => { e.preventDefault(); handleImageRemove(idx); }}
                             className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center"
                             style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
                           >
@@ -625,40 +657,42 @@ export default function InventarioPage() {
               {/* SKU con 3 modos */}
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">SKU *</label>
-                <div className="flex rounded-xl overflow-hidden mb-2" style={{ border: "1px solid rgba(235,71,139,0.2)" }}>
-                  {[
-                    { v: "auto",   icon: "auto_awesome",  label: "Auto" },
-                    { v: "scan",   icon: "qr_code_scanner", label: "Escanear" },
-                    { v: "manual", icon: "edit",           label: "Manual" },
-                  ].map(({ v, icon, label }) => (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => {
-                        setSkuMode(v);
-                        if (v === "auto") setSkuValue(generateSku(""));
-                        else if (v === "scan") setSkuValue("Apunte la cámara al código de barras...");
-                        else setSkuValue("");
-                      }}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-colors"
-                      style={skuMode === v ? { backgroundColor: "#eb478b", color: "#fff" } : { backgroundColor: "transparent", color: "#64748b" }}
-                    >
-                      <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>{icon}</span>
-                      <span className="hidden sm:inline">{label}</span>
-                    </button>
-                  ))}
-                </div>
+                {!editingId && (
+                  <div className="flex rounded-xl overflow-hidden mb-2" style={{ border: "1px solid rgba(235,71,139,0.2)" }}>
+                    {[
+                      { v: "auto", icon: "auto_awesome", label: "Auto" },
+                      { v: "scan", icon: "qr_code_scanner", label: "Escanear" },
+                      { v: "manual", icon: "edit", label: "Manual" },
+                    ].map(({ v, icon, label }) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => {
+                          setSkuMode(v);
+                          if (v === "auto") setSkuValue(generateSku(""));
+                          else if (v === "scan") setSkuValue("Apunte la cámara al código de barras...");
+                          else setSkuValue("");
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-colors"
+                        style={skuMode === v ? { backgroundColor: "#eb478b", color: "#fff" } : { backgroundColor: "transparent", color: "#64748b" }}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>{icon}</span>
+                        <span className="hidden sm:inline">{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="relative">
                   <input
                     type="text"
                     required
                     value={skuValue}
                     onChange={(e) => setSkuValue(e.target.value)}
-                    readOnly={skuMode === "scan"}
+                    readOnly={editingId || skuMode === "scan"}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-pink-400 font-mono text-sm"
-                    placeholder={skuMode === "auto" ? "Generado automáticamente" : skuMode === "scan" ? "Esperando escaneo..." : "Ej: PB-APP-001"}
+                    placeholder={editingId ? "SKU no editable" : skuMode === "auto" ? "Generado automáticamente" : skuMode === "scan" ? "Esperando escaneo..." : "Ej: PB-APP-001"}
                   />
-                  {skuMode === "auto" && (
+                  {skuMode === "auto" && !editingId && (
                     <button
                       type="button"
                       onClick={() => setSkuValue(generateSku(""))}

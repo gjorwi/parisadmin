@@ -97,19 +97,21 @@ export default function NotificacionesPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
                     {item.link && (
                       <a href={item.link} className="px-3 py-2 rounded-lg text-sm font-semibold" style={{ backgroundColor: "rgba(235,71,139,0.08)", color: PRIMARY }}>
                         Ir al módulo
                       </a>
                     )}
                     {!item.read && (
-                      <button onClick={() => markRead(item._id)} className="px-3 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: PRIMARY }}>
-                        Marcar leída
+                      <button onClick={() => markRead(item._id)} className="px-2.5 md:px-3 py-2 rounded-lg text-sm font-semibold text-white flex items-center justify-center gap-1.5" style={{ backgroundColor: PRIMARY }} title="Marcar leída">
+                        <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>done</span>
+                        <span className="hidden lg:inline">Marcar leída</span>
                       </button>
                     )}
-                    <button onClick={() => deactivate(item._id)} className="px-3 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: "#64748b" }}>
-                      Eliminar
+                    <button onClick={() => deactivate(item._id)} className="px-2.5 md:px-3 py-2 rounded-lg text-sm font-semibold text-white flex items-center justify-center gap-1.5" style={{ backgroundColor: "#64748b" }} title="Eliminar">
+                      <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>delete</span>
+                      <span className="hidden lg:inline">Eliminar</span>
                     </button>
                   </div>
                 </div>

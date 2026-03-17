@@ -199,6 +199,7 @@ export default function VentasPage() {
       const abono = abonoUsd;
       const contadoUsd = paymentCurrency === "VES" ? total : total;
       const contadoVes = total * Number(exchangeRate || 0);
+      const normalizedPaymentNote = paymentMethod === "efectivo" ? "" : paymentNote;
       await api.createSale({
         customerId: selectedCustomer?.id,
         customerName: selectedCustomer?.name,
@@ -207,7 +208,7 @@ export default function VentasPage() {
         exchangeRate: Number(exchangeRate || 0),
         paymentAmount: saleType === "contado" ? contadoUsd : paymentCurrency === "USD" ? abonoInputAmount : abonoUsd,
         paymentAmountVes: saleType === "contado" ? (paymentCurrency === "VES" ? contadoVes : contadoUsd * Number(exchangeRate || 0)) : paymentCurrency === "VES" ? abonoInputAmount : abonoUsd * Number(exchangeRate || 0),
-        paymentNote,
+        paymentNote: normalizedPaymentNote,
         saleType,
         abono,
         items: cart.map((item) => ({
@@ -327,7 +328,7 @@ export default function VentasPage() {
 
   return (
     <>
-      <div className="flex flex-col lg:flex-row gap-4 lg:gap-5" style={{ height: "calc(100vh - 9rem)" }}>
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 items-start">
       {/* ── LEFT: Product catalog ────────────── */}
       <div
         className={`flex-1 flex-col bg-white rounded-xl overflow-hidden lg:!flex ${
@@ -379,14 +380,11 @@ export default function VentasPage() {
               </button>
             ))}
           </div>
-          <div className="ml-auto px-3 py-2 rounded-lg text-xs font-semibold" style={{ backgroundColor: "rgba(235,71,139,0.08)", color: PRIMARY }}>
-            Dólar oficial: {exchangeRate ? `Bs. ${Number(exchangeRate).toLocaleString("es-VE", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}` : "cargando..."}
-          </div>
         </div>
 
         {/* Product grid */}
         <div className="flex-1 overflow-y-auto p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2 sm:gap-3">
             {filtered.map((p) => {
               const inCart = cartInProduct(p.sku);
               const outOfStock = p.stock === 0;
@@ -395,7 +393,7 @@ export default function VentasPage() {
               return (
                 <div
                   key={p.sku}
-                  className="rounded-xl p-4 flex flex-col gap-2 transition-all"
+                  className="rounded-xl p-2.5 sm:p-4 flex flex-col gap-2 transition-all"
                   style={{
                     border: inCart
                       ? `2px solid ${PRIMARY}`
@@ -433,7 +431,7 @@ export default function VentasPage() {
                       <button
                         type="button"
                         onClick={() => openGallery(p, 0)}
-                        className="absolute bottom-2 right-2 px-2 py-1 rounded-lg text-[11px] font-semibold text-white"
+                        className="absolute bottom-1.5 right-1.5 px-1.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-semibold text-white"
                         style={{ backgroundColor: "rgba(15,23,42,0.72)" }}
                       >
                         +{images.length - 1} fotos
@@ -442,13 +440,13 @@ export default function VentasPage() {
                   </div>
 
                   {images.length > 1 && (
-                    <div className="flex gap-2 overflow-x-auto pb-1">
+                    <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1">
                       {images.slice(1).map((image, index) => (
                         <button
                           key={`${p.sku}-image-${index + 1}`}
                           type="button"
                           onClick={() => openGallery(p, index + 1)}
-                          className="w-14 h-14 rounded-lg overflow-hidden shrink-0"
+                          className="w-10 h-10 sm:w-14 sm:h-14 rounded-lg overflow-hidden shrink-0"
                           style={{ border: "1px solid rgba(235,71,139,0.18)" }}
                         >
                           <img src={image.url} alt={`${p.name} ${index + 2}`} className="w-full h-full object-cover" />
@@ -458,24 +456,27 @@ export default function VentasPage() {
                   )}
 
                   <div className="flex-1">
-                    <p className="font-semibold text-slate-900 text-sm leading-tight">
+                    <p className="font-semibold text-slate-900 text-xs sm:text-sm leading-tight line-clamp-2">
                       {p.name}
                     </p>
-                    <p className="text-xs text-slate-500 mt-0.5">{p.sku}</p>
+                    <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 truncate">{p.sku}</p>
+                    <p className="text-[10px] sm:text-[11px] font-semibold mt-1 truncate" style={{ color: PRIMARY }}>
+                      {p.category}
+                    </p>
                   </div>
 
                   <div className="flex items-center justify-between">
                     <div>
                       <span
-                        className="text-sm font-bold"
+                        className="text-xs sm:text-sm font-bold"
                         style={{ color: PRIMARY }}
                       >
                         {formatUsd(p.price)}
                       </span>
-                      <p className="text-[11px] text-slate-400">{formatVes(p.price)}</p>
+                      <p className="text-[10px] sm:text-[11px] text-slate-400">{formatVes(p.price)}</p>
                     </div>
                     <span
-                      className="text-xs font-medium px-1.5 py-0.5 rounded"
+                      className="text-[10px] sm:text-xs font-medium px-1.5 py-0.5 rounded text-right"
                       style={{
                         backgroundColor:
                           p.stock === 0
@@ -499,7 +500,7 @@ export default function VentasPage() {
                     <div className="flex items-center justify-between mt-1">
                       <button
                         onClick={() => changeQty(p.sku, -1)}
-                        className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-lg transition-colors"
+                        className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center font-bold text-base sm:text-lg transition-colors"
                         style={{
                           backgroundColor: "rgba(235,71,139,0.15)",
                           color: PRIMARY,
@@ -507,13 +508,13 @@ export default function VentasPage() {
                       >
                         −
                       </button>
-                      <span className="font-bold text-slate-900 text-sm">
+                      <span className="font-bold text-slate-900 text-xs sm:text-sm">
                         {inCart.qty}
                       </span>
                       <button
                         onClick={() => changeQty(p.sku, 1)}
                         disabled={inCart.qty >= p.stock}
-                        className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-lg transition-colors"
+                        className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center font-bold text-base sm:text-lg transition-colors"
                         style={{
                           backgroundColor: "rgba(235,71,139,0.15)",
                           color: PRIMARY,
@@ -526,7 +527,7 @@ export default function VentasPage() {
                     <button
                       onClick={() => addToCart(p)}
                       disabled={outOfStock}
-                      className="w-full py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1"
+                      className="w-full py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold transition-colors flex items-center justify-center gap-1"
                       style={{
                         backgroundColor: outOfStock
                           ? "#f1f5f9"
@@ -582,7 +583,7 @@ export default function VentasPage() {
 
       {/* ── RIGHT: Cart ────────────────────── */}
       <div
-        className={`w-full lg:w-96 flex-col bg-white rounded-xl overflow-hidden shrink-0 fixed lg:relative inset-0 lg:inset-auto z-40 lg:z-0 lg:!flex ${
+        className={`w-full lg:w-96 flex-col bg-white rounded-xl overflow-hidden shrink-0 relative z-40 lg:z-0 lg:!flex max-h-none ${
           showCart ? "flex" : "hidden"
         }`}
         style={{ border: "1px solid rgba(235,71,139,0.1)" }}
@@ -653,6 +654,12 @@ export default function VentasPage() {
             {successMsg}
           </div>
         )}
+
+        <div className="px-4 pt-3 shrink-0">
+          <div className="px-3 py-2 rounded-xl text-xs font-semibold" style={{ backgroundColor: "rgba(235,71,139,0.08)", color: PRIMARY }}>
+            Dólar oficial: {exchangeRate ? `Bs. ${Number(exchangeRate).toLocaleString("es-VE", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}` : "cargando..."}
+          </div>
+        </div>
 
         {/* Sale type toggle */}
         <div className="px-4 pt-3 shrink-0">
@@ -902,9 +909,9 @@ export default function VentasPage() {
         </div>
 
         {/* Cart items */}
-        <div className="flex-1 overflow-y-auto px-4 py-3">
+        <div className="px-4 py-3">
           {cart.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-slate-300">
+            <div className="flex flex-col items-center justify-center py-12 text-slate-300">
               <span
                 className="material-symbols-outlined mb-2"
                 style={{ fontSize: "48px" }}
@@ -1018,19 +1025,19 @@ export default function VentasPage() {
               <label className="block text-xs font-semibold text-slate-600 mb-1.5">
                 Abono inicial
               </label>
-              <div className="grid grid-cols-2 gap-2 mb-2">
+              <div className="grid grid-cols-4 gap-1.5 mb-2">
                 {PAYMENT_METHODS.map(({ value, label, icon }) => (
                   <button
                     key={value}
                     onClick={() => setPaymentMethod(value)}
-                    className="py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
+                    className="py-2 rounded-xl text-[11px] sm:text-xs font-medium flex flex-col items-center justify-center gap-1 transition-colors leading-tight min-h-[4rem]"
                     style={
                       paymentMethod === value
                         ? { backgroundColor: "rgba(235,71,139,0.12)", color: PRIMARY, border: `1px solid ${PRIMARY}` }
                         : { backgroundColor: "#f8f6f7", color: "#64748b", border: "1px solid transparent" }
                     }
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{icon}</span>
+                    <span className="material-symbols-outlined" style={{ fontSize: "17px" }}>{icon}</span>
                     {label}
                   </button>
                 ))}
@@ -1069,17 +1076,19 @@ export default function VentasPage() {
                   }}
                 />
               </div>
-              <textarea
-                value={paymentNote}
-                onChange={(e) => setPaymentNote(e.target.value)}
-                placeholder="Referencia, banco, nota del abono..."
-                className="w-full mt-2 px-3 py-2.5 rounded-xl text-sm outline-none resize-none"
-                rows={2}
-                style={{
-                  backgroundColor: "#f8f6f7",
-                  border: "1px solid rgba(235,71,139,0.2)",
-                }}
-              />
+              {paymentMethod !== "efectivo" && (
+                <textarea
+                  value={paymentNote}
+                  onChange={(e) => setPaymentNote(e.target.value)}
+                  placeholder="Referencia, banco, nota del abono..."
+                  className="w-full mt-2 px-3 py-2.5 rounded-xl text-sm outline-none resize-none"
+                  rows={1}
+                  style={{
+                    backgroundColor: "#f8f6f7",
+                    border: "1px solid rgba(235,71,139,0.2)",
+                  }}
+                />
+              )}
               {abonoAmount && abonoInputAmount > 0 && (
                 <div className="mt-2 p-2 rounded-lg" style={{ backgroundColor: "rgba(235,71,139,0.08)" }}>
                   <div className="flex justify-between text-xs">
@@ -1104,19 +1113,19 @@ export default function VentasPage() {
           {/* Payment method (contado only) */}
           {saleType === "contado" && (
             <>
-              <div className="flex gap-1.5 mb-2 flex-wrap">
+              <div className="grid grid-cols-4 gap-1.5 mb-2">
                 {PAYMENT_METHODS.map(({ value, label, icon }) => (
                   <button
                     key={value}
                     onClick={() => setPaymentMethod(value)}
-                    className="flex-1 py-2 rounded-xl text-xs font-medium flex flex-col items-center gap-1 transition-colors min-w-[5.5rem]"
+                    className="py-2 rounded-xl text-[11px] sm:text-xs font-medium flex flex-col items-center gap-1 transition-colors leading-tight min-h-[4rem]"
                     style={
                       paymentMethod === value
                         ? { backgroundColor: "rgba(235,71,139,0.12)", color: PRIMARY, border: `1px solid ${PRIMARY}` }
                         : { backgroundColor: "#f8f6f7", color: "#64748b", border: "1px solid transparent" }
                     }
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{icon}</span>
+                    <span className="material-symbols-outlined" style={{ fontSize: "17px" }}>{icon}</span>
                     {label}
                   </button>
                 ))}
@@ -1137,17 +1146,19 @@ export default function VentasPage() {
                   </button>
                 ))}
               </div>
-              <textarea
-                value={paymentNote}
-                onChange={(e) => setPaymentNote(e.target.value)}
-                placeholder="Referencia, banco o nota del cobro..."
-                className="w-full mb-3 px-3 py-2.5 rounded-xl text-sm outline-none resize-none"
-                rows={2}
-                style={{
-                  backgroundColor: "#f8f6f7",
-                  border: "1px solid rgba(235,71,139,0.2)",
-                }}
-              />
+              {paymentMethod !== "efectivo" && (
+                <textarea
+                  value={paymentNote}
+                  onChange={(e) => setPaymentNote(e.target.value)}
+                  placeholder="Referencia, banco o nota del cobro..."
+                  className="w-full mb-3 px-3 py-2.5 rounded-xl text-sm outline-none resize-none"
+                  rows={1}
+                  style={{
+                    backgroundColor: "#f8f6f7",
+                    border: "1px solid rgba(235,71,139,0.2)",
+                  }}
+                />
+              )}
             </>
           )}
 

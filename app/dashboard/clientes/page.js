@@ -429,6 +429,8 @@ export default function ClientesPage() {
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState("");
   const [facturasView, setFacturasView] = useState("grid");
+  const [facturasFilter, setFacturasFilter] = useState("todas");
+  const [movimientosView, setMovimientosView] = useState("list");
   const [filterDeuda, setFilterDeuda] = useState("todos"); // todos | con-deuda | sin-deuda
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -537,6 +539,17 @@ export default function ClientesPage() {
     ? selected.facturas.reduce((s, f) => s + f.pagado, 0)
     : 0;
   const totalSaldo = totalFacturado - totalPagado;
+  const facturasFiltradas = selected
+    ? selected.facturas.filter((f) => {
+        if (facturasFilter === "pagadas") {
+          return f.status === "pagada" || calcSaldo(f) <= 0;
+        }
+        if (facturasFilter === "deuda") {
+          return f.status !== "cancelada" && calcSaldo(f) > 0;
+        }
+        return true;
+      })
+    : [];
   const movimientos = selected ? buildMovimientos(selected) : [];
 
   const handleAbonoSave = async ({ monto, metodo, moneda, montoVes, tasa, fecha, obs }) => {
@@ -847,45 +860,73 @@ export default function ClientesPage() {
               style={{ border: "1px solid rgba(235,71,139,0.1)" }}
             >
               <div
-                className="px-5 py-4 flex items-center justify-between"
+                className="px-4 sm:px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
                 style={{ borderBottom: "1px solid rgba(235,71,139,0.1)" }}
               >
-                <h3 className="font-bold text-slate-900">Facturas ({selected.facturas.length})</h3>
-                <div
-                  className="flex rounded-lg overflow-hidden"
-                  style={{ border: "1px solid rgba(235,71,139,0.2)" }}
-                >
-                  {[
-                    { v: "grid", icon: "grid_view" },
-                    { v: "list", icon: "view_list" },
-                  ].map(({ v, icon }) => (
-                    <button
-                      key={v}
-                      onClick={() => setFacturasView(v)}
-                      className="p-2 transition-colors"
-                      style={
-                        facturasView === v
-                          ? { backgroundColor: PRIMARY, color: "#fff" }
-                          : { backgroundColor: "transparent", color: "#64748b" }
-                      }
-                      title={v === "grid" ? "Vista tarjetas" : "Vista lista"}
-                    >
-                      <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
-                        {icon}
-                      </span>
-                    </button>
-                  ))}
+                <div>
+                  <h3 className="font-bold text-slate-900">Facturas ({facturasFiltradas.length})</h3>
+                  <p className="text-xs text-slate-500 mt-1">Separa pagadas de pendientes o con deuda.</p>
+                </div>
+                <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2 sm:items-center">
+                  <div
+                    className="grid grid-cols-3 rounded-lg overflow-hidden w-full sm:w-auto"
+                    style={{ border: "1px solid rgba(235,71,139,0.2)" }}
+                  >
+                    {[
+                      { v: "todas", label: "Todas" },
+                      { v: "deuda", label: "Con deuda" },
+                      { v: "pagadas", label: "Pagadas" },
+                    ].map(({ v, label }) => (
+                      <button
+                        key={v}
+                        onClick={() => setFacturasFilter(v)}
+                        className="px-3 py-2 text-[11px] sm:text-xs font-semibold transition-colors"
+                        style={
+                          facturasFilter === v
+                            ? { backgroundColor: PRIMARY, color: "#fff" }
+                            : { backgroundColor: "transparent", color: "#64748b" }
+                        }
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div
+                    className="flex rounded-lg overflow-hidden self-end sm:self-auto"
+                    style={{ border: "1px solid rgba(235,71,139,0.2)" }}
+                  >
+                    {[
+                      { v: "grid", icon: "grid_view" },
+                      { v: "list", icon: "view_list" },
+                    ].map(({ v, icon }) => (
+                      <button
+                        key={v}
+                        onClick={() => setFacturasView(v)}
+                        className="p-2 transition-colors"
+                        style={
+                          facturasView === v
+                            ? { backgroundColor: PRIMARY, color: "#fff" }
+                            : { backgroundColor: "transparent", color: "#64748b" }
+                        }
+                        title={v === "grid" ? "Vista tarjetas" : "Vista lista"}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
+                          {icon}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              {selected.facturas.length === 0 ? (
+              {facturasFiltradas.length === 0 ? (
                 <div className="p-8 text-center text-slate-400">
                   <span className="material-symbols-outlined" style={{ fontSize: "48px" }}>receipt_long</span>
-                  <p className="text-sm mt-2">No hay facturas registradas</p>
+                  <p className="text-sm mt-2">No hay facturas para este filtro</p>
                 </div>
               ) : facturasView === "grid" ? (
                   <div className="p-4 grid grid-cols-1 xl:grid-cols-2 gap-4 max-h-[34rem] overflow-y-auto">
-                    {selected.facturas.map((f) => {
+                    {facturasFiltradas.map((f) => {
                       const st = statusStyle[f.status];
                       const saldo = calcSaldo(f);
                       const activa = f.status !== "pagada" && f.status !== "cancelada";
@@ -982,7 +1023,7 @@ export default function ClientesPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {selected.facturas.map((f) => {
+                    {facturasFiltradas.map((f) => {
                       const st = statusStyle[f.status];
                       const saldo = calcSaldo(f);
                       const activa =
@@ -1083,21 +1124,108 @@ export default function ClientesPage() {
               style={{ border: "1px solid rgba(235,71,139,0.1)" }}
             >
               <div
-                className="px-5 py-4 flex items-center justify-between"
+                className="px-4 sm:px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
                 style={{ borderBottom: "1px solid rgba(235,71,139,0.1)" }}
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-start sm:items-center gap-2 min-w-0">
                   <span
-                    className="material-symbols-outlined"
+                    className="material-symbols-outlined shrink-0"
                     style={{ fontSize: "20px", color: PRIMARY }}
                   >
                     menu_book
                   </span>
-                  <h3 className="font-bold text-slate-900">
+                  <h3 className="font-bold text-slate-900 text-sm sm:text-base leading-tight">
                     Estado de Cuenta (Debe / Haber)
                   </h3>
                 </div>
+                <div
+                  className="flex rounded-lg overflow-hidden self-end sm:self-auto"
+                  style={{ border: "1px solid rgba(235,71,139,0.2)" }}
+                >
+                  {[
+                    { v: "grid", icon: "grid_view" },
+                    { v: "list", icon: "view_list" },
+                  ].map(({ v, icon }) => (
+                    <button
+                      key={v}
+                      onClick={() => setMovimientosView(v)}
+                      className="p-2 transition-colors"
+                      style={
+                        movimientosView === v
+                          ? { backgroundColor: PRIMARY, color: "#fff" }
+                          : { backgroundColor: "transparent", color: "#64748b" }
+                      }
+                      title={v === "grid" ? "Vista tarjetas" : "Vista lista"}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
+                        {icon}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
+              {movimientosView === "grid" ? (
+                <div className="p-4 grid grid-cols-1 xl:grid-cols-2 gap-4 max-h-[30rem] overflow-y-auto">
+                  {movimientos.map((m, i) => (
+                    <div
+                      key={i}
+                      className="rounded-xl p-4 space-y-3"
+                      style={{ border: "1px solid rgba(235,71,139,0.1)", backgroundColor: "#fff" }}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-bold text-slate-900">{m.descripcion}</p>
+                          <p className="text-xs text-slate-500 mt-0.5">{m.fecha}</p>
+                        </div>
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0 mt-1"
+                          style={{ backgroundColor: m.tipo === "cargo" ? PRIMARY : "#10b981" }}
+                        />
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="rounded-lg p-3 text-center" style={{ backgroundColor: "rgba(235,71,139,0.08)" }}>
+                          <p className="text-xs text-slate-500">Debe</p>
+                          <p className="text-sm font-bold" style={{ color: m.debe > 0 ? PRIMARY : "#94a3b8" }}>
+                            {m.debe > 0 ? fmt(m.debe) : "—"}
+                          </p>
+                        </div>
+                        <div className="rounded-lg p-3 text-center" style={{ backgroundColor: "rgba(16,185,129,0.08)" }}>
+                          <p className="text-xs text-slate-500">Haber</p>
+                          <p className="text-sm font-bold" style={{ color: m.haber > 0 ? "#10b981" : "#94a3b8" }}>
+                            {m.haber > 0 ? fmt(m.haber) : "—"}
+                          </p>
+                        </div>
+                        <div className="rounded-lg p-3 text-center" style={{ backgroundColor: "#f8f6f7" }}>
+                          <p className="text-xs text-slate-500">Saldo</p>
+                          <p className="text-sm font-bold" style={{ color: m.saldo > 0 ? "#f59e0b" : "#10b981" }}>
+                            {fmt(m.saldo)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <div
+                    className="rounded-xl p-4 space-y-3"
+                    style={{ border: "1px solid rgba(235,71,139,0.15)", backgroundColor: "rgba(235,71,139,0.03)" }}
+                  >
+                    <p className="text-sm font-bold text-slate-900">Totales</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="rounded-lg p-3 text-center" style={{ backgroundColor: "rgba(235,71,139,0.08)" }}>
+                        <p className="text-xs text-slate-500">Debe</p>
+                        <p className="text-sm font-bold" style={{ color: PRIMARY }}>{fmt(totalFacturado)}</p>
+                      </div>
+                      <div className="rounded-lg p-3 text-center" style={{ backgroundColor: "rgba(16,185,129,0.08)" }}>
+                        <p className="text-xs text-slate-500">Haber</p>
+                        <p className="text-sm font-bold" style={{ color: "#10b981" }}>{fmt(totalPagado)}</p>
+                      </div>
+                      <div className="rounded-lg p-3 text-center" style={{ backgroundColor: "#f8f6f7" }}>
+                        <p className="text-xs text-slate-500">Saldo</p>
+                        <p className="text-sm font-bold" style={{ color: totalSaldo > 0 ? PRIMARY : "#10b981" }}>{fmt(totalSaldo)}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
               <div className="overflow-auto max-h-[30rem]">
                 <table className="w-full text-left">
                   <thead>
@@ -1192,6 +1320,7 @@ export default function ClientesPage() {
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
           </div>
         )}
