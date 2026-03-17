@@ -65,31 +65,18 @@ export default function LoginPage() {
           style={{ backgroundColor: "#fff" }}
         />
 
-        {/* Logo area */}
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl overflow-hidden bg-white">
-            <Image
-              src="/logo.png"
-              alt="Paris Boutique"
-              width={48}
-              height={48}
-              className="w-full h-full object-cover"
-            />
-          </div>
-          <div className="flex flex-col">
-            <h1 className="text-2xl font-bold text-white tracking-tight">
-              PARIS
-            </h1>
-            <span className="text-xs text-white/70">Shop Boutique</span>
-          </div>
-        </div>
-
         {/* Center content */}
         <div className="relative z-10 flex-1 flex flex-col items-center justify-center text-center px-8">
-          <div className="w-24 h-24 rounded-full bg-white/20 flex items-center justify-center mb-8">
-            <span className="material-symbols-outlined text-white text-5xl">
-              inventory_2
-            </span>
+          <div className="w-32 h-32 rounded-full bg-white/20 flex items-center justify-center mb-8 p-3">
+            <div className="w-full h-full rounded-full overflow-hidden bg-white/95 flex items-center justify-center">
+              <Image
+                src="/logo.png"
+                alt="Paris Boutique"
+                width={104}
+                height={104}
+                className="w-full h-full object-cover"
+              />
+            </div>
           </div>
           <h2 className="text-4xl font-bold text-white mb-4 leading-tight">
             Gestión de Inventario
@@ -126,32 +113,23 @@ export default function LoginPage() {
       </div>
 
       {/* Right panel – login form */}
-      <div className="flex-1 flex flex-col items-center justify-center px-8 py-12 bg-white">
+      <div className="flex-1 flex flex-col items-center justify-center px-8 py-12 pt-6 bg-white">
         {/* Mobile logo */}
-        <div className="lg:hidden flex items-center gap-3 mb-10">
-          <div className="w-10 h-10 rounded-xl overflow-hidden">
+        <div className="lg:hidden flex items-center justify-center mb-4">
+          <div className="w-28 h-28 rounded-full overflow-hidden bg-white shadow-sm">
             <Image
               src="/logo.png"
               alt="Paris Boutique"
-              width={40}
-              height={40}
+              width={104}
+              height={104}
               className="w-full h-full object-cover"
             />
-          </div>
-          <div className="flex flex-col">
-            <h1
-              className="text-xl font-bold tracking-tight"
-              style={{ color: "#eb478b" }}
-            >
-              PARIS
-            </h1>
-            <span className="text-xs text-slate-500">Shop Boutique</span>
           </div>
         </div>
 
         <div className="w-full max-w-md">
           {/* Header */}
-          <div className="mb-10">
+          <div className="mb-8 text-center">
             <h2 className="text-3xl font-bold text-slate-900 mb-2">
               Bienvenido de vuelta
             </h2>
@@ -327,7 +305,7 @@ export default function LoginPage() {
           </form>
 
           {/* Divider */}
-          <div className="flex items-center gap-4 my-8">
+          <div className="flex items-center gap-4 my-8 mb-2">
             <div className="flex-1 h-px bg-slate-200" />
             <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">
               Acceso seguro
