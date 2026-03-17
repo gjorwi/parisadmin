@@ -1,0 +1,576 @@
+"use client";
+
+import { useState } from "react";
+
+const allProducts = [
+  { name: "Midnight Velvet Clutch", sku: "PB-ACC-001", category: "Accesorios", stock: 42, price: 285, status: "En Stock" },
+  { name: "Silk Garden Maxi Dress", sku: "PB-APP-104", category: "Ropa", stock: 5, price: 495, status: "Stock Bajo" },
+  { name: "Parisian Night Heels", sku: "PB-FTW-022", category: "Calzado", stock: 18, price: 320, status: "Normal" },
+  { name: "L'Amour Silk Scarf", sku: "PB-ACC-045", category: "Accesorios", stock: 120, price: 125, status: "En Stock" },
+  { name: "Rose Petal Blouse", sku: "PB-APP-210", category: "Ropa", stock: 0, price: 210, status: "Agotado" },
+  { name: "Chanel Inspired Flats", sku: "PB-FTW-089", category: "Calzado", stock: 33, price: 180, status: "En Stock" },
+  { name: "Pearl Drop Earrings", sku: "PB-JWL-012", category: "Joyería", stock: 7, price: 95, status: "Stock Bajo" },
+  { name: "Bordeaux Wrap Coat", sku: "PB-APP-305", category: "Ropa", stock: 11, price: 680, status: "Normal" },
+  { name: "Golden Hour Bracelet", sku: "PB-JWL-034", category: "Joyería", stock: 58, price: 145, status: "En Stock" },
+  { name: "Satin Evening Bag", sku: "PB-ACC-078", category: "Accesorios", stock: 3, price: 340, status: "Stock Bajo" },
+  { name: "Ivory Lace Blouse", sku: "PB-APP-198", category: "Ropa", stock: 0, price: 175, status: "Agotado" },
+  { name: "Suede Ankle Boots", sku: "PB-FTW-156", category: "Calzado", stock: 24, price: 420, status: "En Stock" },
+];
+
+const categories = ["Todos", "Accesorios", "Ropa", "Calzado", "Joyería"];
+const statusOptions = ["Todos", "En Stock", "Stock Bajo", "Normal", "Agotado"];
+
+const statusStyle = {
+  "En Stock": { bg: "rgba(16,185,129,0.1)", color: "#059669" },
+  "Stock Bajo": { bg: "rgba(235,71,139,0.1)", color: "#eb478b" },
+  "Normal": { bg: "rgba(245,158,11,0.1)", color: "#d97706" },
+  "Agotado": { bg: "rgba(239,68,68,0.1)", color: "#dc2626" },
+};
+
+export default function InventarioPage() {
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("Todos");
+  const [statusFilter, setStatusFilter] = useState("Todos");
+  const [view, setView] = useState("grid");
+  const [showModal, setShowModal] = useState(false);
+  const [skuMode, setSkuMode] = useState("manual");
+  const [skuValue, setSkuValue] = useState("");
+  const [productImages, setProductImages] = useState([null, null, null]);
+
+  const generateSku = (category) => {
+    const prefix = category ? category.substring(0, 3).toUpperCase() : "PB";
+    const num = Math.floor(Math.random() * 900) + 100;
+    return `PB-${prefix}-${num}`;
+  };
+
+  const handleImageChange = (idx, file) => {
+    const updated = [...productImages];
+    updated[idx] = file ? URL.createObjectURL(file) : null;
+    setProductImages(updated);
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setSkuMode("manual");
+    setSkuValue("");
+    setProductImages([null, null, null]);
+  };
+
+  const filtered = allProducts.filter((p) => {
+    const matchSearch =
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      p.sku.toLowerCase().includes(search.toLowerCase());
+    const matchCat = categoryFilter === "Todos" || p.category === categoryFilter;
+    const matchStatus = statusFilter === "Todos" || p.status === statusFilter;
+    return matchSearch && matchCat && matchStatus;
+  });
+
+  return (
+    <div>
+      {/* Page title */}
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Gestión de Inventario</h1>
+          <p className="text-slate-500 text-sm mt-1">
+            Administra y controla todos los productos de la tienda.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowModal(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm text-white transition-all shrink-0"
+          style={{ backgroundColor: "#eb478b", boxShadow: "0 4px 12px rgba(235,71,139,0.3)" }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#d63d7a")}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#eb478b")}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>add</span>
+          <span className="hidden sm:inline">Nuevo Producto</span>
+        </button>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+        {[
+          { label: "Total SKUs", value: allProducts.length, icon: "inventory_2", color: "#eb478b" },
+          { label: "En Stock", value: allProducts.filter((p) => p.status === "En Stock").length, icon: "check_circle", color: "#10b981" },
+          { label: "Stock Bajo", value: allProducts.filter((p) => p.status === "Stock Bajo").length, icon: "warning", color: "#eb478b" },
+          { label: "Agotados", value: allProducts.filter((p) => p.status === "Agotado").length, icon: "remove_shopping_cart", color: "#ef4444" },
+        ].map((c) => (
+          <div
+            key={c.label}
+            className="bg-white p-4 rounded-xl flex items-center gap-4"
+            style={{ border: "1px solid rgba(235,71,139,0.1)" }}
+          >
+            <div
+              className="w-12 h-12 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: `${c.color}18` }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: "24px", color: c.color }}>
+                {c.icon}
+              </span>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-slate-900">{c.value}</p>
+              <p className="text-xs text-slate-500 font-medium">{c.label}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div
+        className="bg-white rounded-xl overflow-hidden"
+        style={{ border: "1px solid rgba(235,71,139,0.1)" }}
+      >
+        <div
+          className="p-4 flex flex-wrap items-center gap-3"
+          style={{ borderBottom: "1px solid rgba(235,71,139,0.1)" }}
+        >
+          {/* Search */}
+          <div className="relative flex-1 min-w-48">
+            <span
+              className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              style={{ fontSize: "18px" }}
+            >
+              search
+            </span>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por nombre o SKU..."
+              className="w-full pl-9 pr-4 py-2 rounded-lg text-sm outline-none"
+              style={{ backgroundColor: "#f8f6f7", border: "1px solid rgba(235,71,139,0.15)" }}
+            />
+          </div>
+
+          {/* Category filter */}
+          <div className="flex flex-wrap gap-1">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(cat)}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap"
+                style={
+                  categoryFilter === cat
+                    ? { backgroundColor: "#eb478b", color: "#fff" }
+                    : { backgroundColor: "#f8f6f7", color: "#64748b" }
+                }
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          {/* Status filter */}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-3 py-2 rounded-lg text-sm outline-none cursor-pointer"
+            style={{ backgroundColor: "#f8f6f7", border: "1px solid rgba(235,71,139,0.15)", color: "#64748b" }}
+          >
+            {statusOptions.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+
+          {/* View toggle */}
+          <div
+            className="flex rounded-lg overflow-hidden ml-auto"
+            style={{ border: "1px solid rgba(235,71,139,0.2)" }}
+          >
+            {[
+              { v: "grid", icon: "grid_view" },
+              { v: "list", icon: "view_list" },
+            ].map(({ v, icon }) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className="p-2 transition-colors"
+                style={
+                  view === v
+                    ? { backgroundColor: "#eb478b", color: "#fff" }
+                    : { backgroundColor: "transparent", color: "#64748b" }
+                }
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
+                  {icon}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Grid view */}
+        {view === "grid" ? (
+          <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filtered.map((p) => {
+              const st = statusStyle[p.status];
+              return (
+                <div
+                  key={p.sku}
+                  className="rounded-xl p-4 flex flex-col gap-3"
+                  style={{ border: "1px solid rgba(235,71,139,0.12)", backgroundColor: "#fdfcfd" }}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm text-slate-900 leading-tight">{p.name}</p>
+                      <p className="text-xs text-slate-400 font-mono mt-0.5">{p.sku}</p>
+                    </div>
+                    <span
+                      className="px-2 py-0.5 rounded-full text-xs font-semibold shrink-0"
+                      style={{ backgroundColor: st.bg, color: st.color }}
+                    >
+                      {p.status}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span
+                      className="px-2 py-1 rounded text-xs font-medium"
+                      style={{ backgroundColor: "#f1f5f9", color: "#475569" }}
+                    >
+                      {p.category}
+                    </span>
+                    <span className="text-lg font-bold" style={{ color: "#eb478b" }}>
+                      ${p.price.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between pt-2" style={{ borderTop: "1px solid rgba(235,71,139,0.08)" }}>
+                    <div className="flex items-center gap-1">
+                      <span className="material-symbols-outlined text-slate-400" style={{ fontSize: "14px" }}>inventory_2</span>
+                      <span
+                        className="text-sm font-bold"
+                        style={{ color: p.stock === 0 ? "#ef4444" : p.stock < 8 ? "#eb478b" : "#0f172a" }}
+                      >
+                        {p.stock} uds.
+                      </span>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        className="p-1.5 rounded-lg text-slate-400 transition-colors"
+                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "rgba(235,71,139,0.1)"; e.currentTarget.style.color = "#eb478b"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.color = "#94a3b8"; }}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>edit</span>
+                      </button>
+                      <button
+                        className="p-1.5 rounded-lg text-slate-400 transition-colors"
+                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.08)"; e.currentTarget.style.color = "#ef4444"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.color = "#94a3b8"; }}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>delete</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {filtered.length === 0 && (
+              <div className="col-span-full py-12 text-center text-slate-400 text-sm">
+                No se encontraron productos con los filtros seleccionados.
+              </div>
+            )}
+          </div>
+        ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left" style={{ minWidth: "700px" }}>
+            <thead>
+              <tr style={{ backgroundColor: "#f8f6f7" }}>
+                {["Producto", "SKU", "Categoría", "Stock", "Precio", "Estado", "Acciones"].map(
+                  (h, i) => (
+                    <th
+                      key={h}
+                      className={`px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 ${i === 6 ? "text-right" : ""}`}
+                    >
+                      {h}
+                    </th>
+                  )
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((p) => {
+                const st = statusStyle[p.status];
+                return (
+                  <tr
+                    key={p.sku}
+                    className="transition-colors"
+                    style={{ borderTop: "1px solid rgba(235,71,139,0.05)" }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.backgroundColor = "rgba(235,71,139,0.02)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.backgroundColor = "transparent")
+                    }
+                  >
+                    <td className="px-5 py-3.5 font-semibold text-sm text-slate-900">
+                      {p.name}
+                    </td>
+                    <td className="px-5 py-3.5 text-sm text-slate-500">{p.sku}</td>
+                    <td className="px-5 py-3.5">
+                      <span
+                        className="px-2 py-1 rounded text-xs font-medium"
+                        style={{ backgroundColor: "#f1f5f9", color: "#475569" }}
+                      >
+                        {p.category}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span
+                        className="text-sm font-bold"
+                        style={{ color: p.stock === 0 ? "#ef4444" : p.stock < 8 ? "#eb478b" : "#0f172a" }}
+                      >
+                        {p.stock}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 font-semibold text-sm" style={{ color: "#eb478b" }}>
+                      ${p.price.toFixed(2)}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span
+                        className="px-2.5 py-1 rounded-full text-xs font-semibold"
+                        style={{ backgroundColor: st.bg, color: st.color }}
+                      >
+                        {p.status}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          className="p-1.5 rounded-lg text-slate-400 transition-colors"
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = "rgba(235,71,139,0.1)";
+                            e.currentTarget.style.color = "#eb478b";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = "transparent";
+                            e.currentTarget.style.color = "#94a3b8";
+                          }}
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
+                            edit
+                          </span>
+                        </button>
+                        <button
+                          className="p-1.5 rounded-lg text-slate-400 transition-colors"
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.08)";
+                            e.currentTarget.style.color = "#ef4444";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = "transparent";
+                            e.currentTarget.style.color = "#94a3b8";
+                          }}
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
+                            delete
+                          </span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center text-slate-400 text-sm">
+                    No se encontraron productos con los filtros seleccionados.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        )}
+
+        {/* Pagination */}
+        <div
+          className="p-4 flex items-center justify-between text-sm text-slate-500"
+          style={{ borderTop: "1px solid rgba(235,71,139,0.1)" }}
+        >
+          <p>Mostrando {filtered.length} de {allProducts.length} productos</p>
+          <div className="flex gap-2">
+            <button
+              className="p-2 rounded-lg opacity-50 cursor-not-allowed"
+              style={{ border: "1px solid rgba(235,71,139,0.2)" }}
+              disabled
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
+                chevron_left
+              </span>
+            </button>
+            <button
+              className="w-9 h-9 rounded-lg text-sm font-medium"
+              style={{ backgroundColor: "#eb478b", color: "#fff" }}
+            >
+              1
+            </button>
+            <button
+              className="p-2 rounded-lg transition-colors"
+              style={{ border: "1px solid rgba(235,71,139,0.2)" }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
+                chevron_right
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+      {/* Nuevo Producto Modal */}
+      {showModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={handleCloseModal}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="p-6 flex items-center justify-between sticky top-0 bg-white z-10"
+              style={{ borderBottom: "1px solid rgba(235,71,139,0.1)" }}
+            >
+              <h2 className="text-xl font-bold text-slate-900">Nuevo Producto</h2>
+              <button onClick={handleCloseModal} className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "rgba(235,71,139,0.1)" }}>
+                <span className="material-symbols-outlined" style={{ color: "#eb478b", fontSize: "20px" }}>close</span>
+              </button>
+            </div>
+            <form className="p-6 space-y-5" onSubmit={(e) => { e.preventDefault(); handleCloseModal(); }}>
+
+              {/* Images upload — 1 to 3 */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Imágenes del Producto <span className="text-slate-400 font-normal">(máx. 3)</span></label>
+                <div className="grid grid-cols-3 gap-3">
+                  {[0, 1, 2].map((idx) => (
+                    <label
+                      key={idx}
+                      className="relative flex flex-col items-center justify-center rounded-xl cursor-pointer overflow-hidden transition-all"
+                      style={{
+                        border: productImages[idx] ? "2px solid #eb478b" : "2px dashed rgba(235,71,139,0.3)",
+                        backgroundColor: productImages[idx] ? "transparent" : "rgba(235,71,139,0.04)",
+                        aspectRatio: "3/4",
+                      }}
+                    >
+                      {productImages[idx] ? (
+                        <>
+                          <img src={productImages[idx]} alt="" className="w-full h-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={(e) => { e.preventDefault(); handleImageChange(idx, null); }}
+                            className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center"
+                            style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+                          >
+                            <span className="material-symbols-outlined text-white" style={{ fontSize: "14px" }}>close</span>
+                          </button>
+                        </>
+                      ) : (
+                        <div className="flex flex-col items-center gap-1 p-2 text-center">
+                          <span className="material-symbols-outlined" style={{ fontSize: "28px", color: "rgba(235,71,139,0.5)" }}>add_photo_alternate</span>
+                          <span className="text-xs text-slate-400">{idx === 0 ? "Principal" : `Foto ${idx + 1}`}</span>
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleImageChange(idx, e.target.files?.[0])}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Nombre */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Nombre del Producto *</label>
+                <input type="text" required className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-pink-400" placeholder="Ej: Vestido Elegante" />
+              </div>
+
+              {/* SKU con 3 modos */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">SKU *</label>
+                <div className="flex rounded-xl overflow-hidden mb-2" style={{ border: "1px solid rgba(235,71,139,0.2)" }}>
+                  {[
+                    { v: "auto",   icon: "auto_awesome",  label: "Auto" },
+                    { v: "scan",   icon: "qr_code_scanner", label: "Escanear" },
+                    { v: "manual", icon: "edit",           label: "Manual" },
+                  ].map(({ v, icon, label }) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => {
+                        setSkuMode(v);
+                        if (v === "auto") setSkuValue(generateSku(""));
+                        else if (v === "scan") setSkuValue("Apunte la cámara al código de barras...");
+                        else setSkuValue("");
+                      }}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-colors"
+                      style={skuMode === v ? { backgroundColor: "#eb478b", color: "#fff" } : { backgroundColor: "transparent", color: "#64748b" }}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>{icon}</span>
+                      <span className="hidden sm:inline">{label}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={skuValue}
+                    onChange={(e) => setSkuValue(e.target.value)}
+                    readOnly={skuMode === "scan"}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-pink-400 font-mono text-sm"
+                    placeholder={skuMode === "auto" ? "Generado automáticamente" : skuMode === "scan" ? "Esperando escaneo..." : "Ej: PB-APP-001"}
+                  />
+                  {skuMode === "auto" && (
+                    <button
+                      type="button"
+                      onClick={() => setSkuValue(generateSku(""))}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs font-semibold"
+                      style={{ color: "#eb478b" }}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>refresh</span>
+                      Regenerar
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Precio / Stock / Categoría */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Precio *</label>
+                  <input type="number" required step="0.01" min="0" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-pink-400" placeholder="0.00" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Stock *</label>
+                  <input type="number" required min="0" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-pink-400" placeholder="0" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Categoría *</label>
+                  <select
+                    required
+                    onChange={(e) => { if (skuMode === "auto") setSkuValue(generateSku(e.target.value)); }}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-pink-400"
+                  >
+                    <option value="">Seleccionar</option>
+                    {categories.filter(c => c !== "Todos").map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Descripción */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Descripción</label>
+                <textarea rows="3" className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-pink-400 resize-none" placeholder="Descripción del producto..." />
+              </div>
+
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={handleCloseModal} className="flex-1 px-4 py-2.5 rounded-xl font-semibold text-sm" style={{ backgroundColor: "rgba(235,71,139,0.1)", color: "#eb478b" }}>Cancelar</button>
+                <button type="submit" className="flex-1 px-4 py-2.5 rounded-xl font-semibold text-sm text-white" style={{ backgroundColor: "#eb478b" }}>Guardar Producto</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
