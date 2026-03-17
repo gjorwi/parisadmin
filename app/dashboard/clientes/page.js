@@ -5,6 +5,13 @@ import api from "../../../lib/api";
 
 const PRIMARY = "#eb478b";
 
+const PAYMENT_METHOD_LABELS = {
+  efectivo: "Efectivo",
+  tarjeta: "Tarjeta",
+  transferencia: "Transferencia",
+  pago_movil: "Pago móvil",
+};
+
 /* ─── Helpers ────────────────────────────────────────── */
 const calcSaldo = (f) => f.total - f.pagado;
 
@@ -27,18 +34,20 @@ function AbonoModal({ factura, onClose, onSave }) {
   const saldo = calcSaldo(factura);
   const [monto, setMonto] = useState("");
   const [metodo, setMetodo] = useState("efectivo");
+  const [moneda, setMoneda] = useState("USD");
+  const [tasa, setTasa] = useState("");
   const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0]);
   const [obs, setObs] = useState("");
 
   const montoNum = parseFloat(monto) || 0;
-  const valid = montoNum > 0 && montoNum <= saldo;
+  const tasaNum = parseFloat(tasa) || 0;
+  const montoUsd = moneda === "VES" ? (tasaNum > 0 ? montoNum / tasaNum : 0) : montoNum;
+  const montoVes = moneda === "VES" ? montoNum : montoUsd * tasaNum;
+  const valid = montoUsd > 0 && montoUsd <= saldo && (moneda === "USD" || tasaNum > 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-black/40"
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white rounded-2xl w-full max-w-md shadow-2xl z-10">
         {/* Header */}
         <div
@@ -65,26 +74,65 @@ function AbonoModal({ factura, onClose, onSave }) {
             <label className="block text-xs font-semibold text-slate-700 mb-1.5">
               Monto del Abono *
             </label>
+            <div className="flex gap-2 mb-2">
+              {[
+                { v: "USD", label: "Dólares" },
+                { v: "VES", label: "Bolívares" },
+              ].map(({ v, label }) => (
+                <button
+                  key={v}
+                  onClick={() => setMoneda(v)}
+                  className="flex-1 py-2 rounded-xl text-xs font-semibold transition-colors"
+                  style={
+                    moneda === v
+                      ? { backgroundColor: "rgba(16,185,129,0.12)", color: "#059669", border: "1px solid rgba(16,185,129,0.35)" }
+                      : { backgroundColor: "#f8f6f7", color: "#64748b", border: "1px solid transparent" }
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-semibold">
-                $
+                {moneda === "VES" ? "Bs." : "$"}
               </span>
               <input
                 type="number"
                 min="0.01"
-                max={saldo}
+                max={moneda === "VES" && tasaNum > 0 ? saldo * tasaNum : saldo}
                 step="0.01"
                 value={monto}
                 onChange={(e) => setMonto(e.target.value)}
-                placeholder={`Máx. ${saldo.toFixed(2)}`}
-                className="w-full pl-7 pr-4 py-2.5 rounded-xl text-sm outline-none border"
+                placeholder={moneda === "VES" && tasaNum > 0 ? `Máx. ${(saldo * tasaNum).toFixed(2)}` : `Máx. ${saldo.toFixed(2)}`}
+                className="w-full pl-12 pr-4 py-2.5 rounded-xl text-sm outline-none border"
                 style={{
                   borderColor: !valid && monto ? "#ef4444" : "rgba(235,71,139,0.2)",
                   backgroundColor: "#f8f6f7",
                 }}
               />
             </div>
-            {monto && montoNum > saldo && (
+            {moneda === "VES" && (
+              <div className="mt-2">
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Tasa USD a VES *
+                </label>
+                <input
+                  type="number"
+                  min="0.0001"
+                  step="0.0001"
+                  value={tasa}
+                  onChange={(e) => setTasa(e.target.value)}
+                  placeholder="Ej. 108.2500"
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none border"
+                  style={{
+                    borderColor: moneda === "VES" && !tasaNum && tasa ? "#ef4444" : "rgba(235,71,139,0.2)",
+                    backgroundColor: "#f8f6f7",
+                  }}
+                />
+              </div>
+            )}
+            {monto && montoUsd > saldo && (
               <p className="text-xs text-red-500 mt-1">
                 El monto excede el saldo de {fmt(saldo)}
               </p>
@@ -93,7 +141,7 @@ function AbonoModal({ factura, onClose, onSave }) {
               {[saldo / 2, saldo].map((v, i) => (
                 <button
                   key={i}
-                  onClick={() => setMonto(v.toFixed(2))}
+                  onClick={() => setMonto((moneda === "VES" && tasaNum > 0 ? v * tasaNum : v).toFixed(2))}
                   className="text-xs px-2.5 py-1 rounded-lg font-medium"
                   style={{
                     backgroundColor: "rgba(235,71,139,0.08)",
@@ -104,6 +152,12 @@ function AbonoModal({ factura, onClose, onSave }) {
                 </button>
               ))}
             </div>
+            {montoUsd > 0 && (
+              <p className="text-xs text-slate-500 mt-2">
+                Equivale a <span className="font-semibold">{fmt(montoUsd)}</span>
+                {moneda === "VES" ? ` con tasa ${tasaNum || 0}` : ""}
+              </p>
+            )}
           </div>
 
           {/* Método */}
@@ -116,6 +170,7 @@ function AbonoModal({ factura, onClose, onSave }) {
                 { v: "efectivo", label: "Efectivo", icon: "payments" },
                 { v: "tarjeta", label: "Tarjeta", icon: "credit_card" },
                 { v: "transferencia", label: "Transferencia", icon: "account_balance" },
+                { v: "pago_movil", label: "Pago móvil", icon: "smartphone" },
               ].map(({ v, label, icon }) => (
                 <button
                   key={v}
@@ -182,7 +237,7 @@ function AbonoModal({ factura, onClose, onSave }) {
             Cancelar
           </button>
           <button
-            onClick={() => valid && onSave({ monto: montoNum, metodo, fecha, obs })}
+            onClick={() => valid && onSave({ monto: montoUsd, metodo, moneda, montoVes, tasa: tasaNum, fecha, obs })}
             disabled={!valid}
             className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-all"
             style={{
@@ -192,6 +247,120 @@ function AbonoModal({ factura, onClose, onSave }) {
           >
             Registrar Abono
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FacturaDetalleModal({ factura, onClose }) {
+  const saldo = calcSaldo(factura);
+  const pagos = factura.pagos || [];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl w-full max-w-3xl shadow-2xl z-10 overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-5" style={{ borderBottom: "1px solid rgba(235,71,139,0.1)" }}>
+          <div>
+            <h3 className="font-bold text-slate-900">Detalle de factura</h3>
+            <p className="text-xs text-slate-500 mt-0.5">{factura.id} · {factura.fecha}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div className="p-5 overflow-y-auto space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="rounded-xl p-3" style={{ backgroundColor: "#f8f6f7" }}>
+              <p className="text-xs text-slate-500">Total</p>
+              <p className="text-lg font-bold text-slate-900">{fmt(factura.total)}</p>
+            </div>
+            <div className="rounded-xl p-3" style={{ backgroundColor: "rgba(16,185,129,0.08)" }}>
+              <p className="text-xs text-slate-500">Pagado</p>
+              <p className="text-lg font-bold" style={{ color: "#10b981" }}>{fmt(factura.pagado)}</p>
+            </div>
+            <div className="rounded-xl p-3" style={{ backgroundColor: saldo > 0 ? "rgba(235,71,139,0.08)" : "rgba(16,185,129,0.08)" }}>
+              <p className="text-xs text-slate-500">Saldo</p>
+              <p className="text-lg font-bold" style={{ color: saldo > 0 ? PRIMARY : "#10b981" }}>{fmt(saldo)}</p>
+            </div>
+          </div>
+
+          <div>
+            <h4 className="text-sm font-bold text-slate-900 mb-2">Productos facturados</h4>
+            <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(235,71,139,0.1)" }}>
+              <table className="w-full text-left">
+                <thead>
+                  <tr style={{ backgroundColor: "#f8f6f7" }}>
+                    {["Producto", "Cantidad", "Precio", "Total"].map((h) => (
+                      <th key={h} className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-500">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {factura.items.map((it, idx) => (
+                    <tr key={idx} style={{ borderTop: "1px solid rgba(235,71,139,0.05)" }}>
+                      <td className="px-4 py-3 text-sm text-slate-700">{it.nombre}</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">{it.qty}</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">{fmt(it.precio)}</td>
+                      <td className="px-4 py-3 text-sm font-semibold text-slate-900">{fmt(it.qty * it.precio)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-bold text-slate-900">Historial de pagos</h4>
+              <span className="text-xs text-slate-500">{pagos.length} {pagos.length === 1 ? "parte" : "partes"}</span>
+            </div>
+            {pagos.length === 0 ? (
+              <div className="rounded-xl p-4 text-sm text-slate-400 text-center" style={{ backgroundColor: "#f8f6f7" }}>
+                Esta factura aún no registra pagos parciales.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {pagos.map((pago, index) => (
+                  <div key={`${factura.id}-pago-${index}`} className="rounded-xl p-4" style={{ border: "1px solid rgba(235,71,139,0.1)", backgroundColor: "#fff" }}>
+                    <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">Pago #{index + 1}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{pago.fecha}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span className="px-2 py-1 rounded-lg font-semibold" style={{ backgroundColor: "rgba(235,71,139,0.1)", color: PRIMARY }}>
+                          {PAYMENT_METHOD_LABELS[pago.metodo] || pago.metodo}
+                        </span>
+                        <span className="px-2 py-1 rounded-lg font-semibold" style={{ backgroundColor: "rgba(16,185,129,0.12)", color: "#059669" }}>
+                          {pago.moneda}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                      <div className="rounded-lg p-3" style={{ backgroundColor: "#f8f6f7" }}>
+                        <p className="text-xs text-slate-500">Monto USD</p>
+                        <p className="text-sm font-bold text-slate-900">{fmt(pago.montoUsd)}</p>
+                      </div>
+                      <div className="rounded-lg p-3" style={{ backgroundColor: "#f8f6f7" }}>
+                        <p className="text-xs text-slate-500">Monto VES</p>
+                        <p className="text-sm font-bold text-slate-900">Bs. {Number(pago.montoVes || 0).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                      </div>
+                      <div className="rounded-lg p-3" style={{ backgroundColor: "#f8f6f7" }}>
+                        <p className="text-xs text-slate-500">Tasa usada</p>
+                        <p className="text-sm font-bold text-slate-900">{Number(pago.tasa || 0).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</p>
+                      </div>
+                    </div>
+                    {pago.observacion && (
+                      <p className="text-xs text-slate-500 mt-3">{pago.observacion}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -263,6 +432,9 @@ export default function ClientesPage() {
   const [filterDeuda, setFilterDeuda] = useState("todos"); // todos | con-deuda | sin-deuda
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [abonoFactura, setAbonoFactura] = useState(null);
+  const [cancelFactura, setCancelFactura] = useState(null);
+  const [detailFactura, setDetailFactura] = useState(null);
 
   useEffect(() => {
     loadCustomers();
@@ -289,6 +461,15 @@ export default function ClientesPage() {
           })),
           total: Number(factura.total || 0),
           pagado: Number(factura.pagado || 0),
+          pagos: (factura.pagos || []).map((pago) => ({
+            fecha: pago.fecha,
+            metodo: pago.metodo,
+            moneda: pago.moneda || "USD",
+            montoUsd: Number(pago.montoUsd || 0),
+            montoVes: Number(pago.montoVes || 0),
+            tasa: Number(pago.tasa || 0),
+            observacion: pago.observacion || "",
+          })),
           status: factura.status || "pendiente",
         })),
       }));
@@ -357,6 +538,36 @@ export default function ClientesPage() {
     : 0;
   const totalSaldo = totalFacturado - totalPagado;
   const movimientos = selected ? buildMovimientos(selected) : [];
+
+  const handleAbonoSave = async ({ monto, metodo, moneda, montoVes, tasa, fecha, obs }) => {
+    if (!selected || !abonoFactura) {
+      return;
+    }
+
+    try {
+      setError("");
+      await api.addCustomerInvoicePayment(selected.id, abonoFactura.id, { amount: monto, metodo, moneda, montoVes, tasa, fecha, obs });
+      setAbonoFactura(null);
+      await loadCustomers();
+    } catch (err) {
+      setError(err.message || "No fue posible registrar el abono");
+    }
+  };
+
+  const handleCancelarFactura = async () => {
+    if (!selected || !cancelFactura) {
+      return;
+    }
+
+    try {
+      setError("");
+      await api.cancelCustomerInvoice(selected.id, cancelFactura.id);
+      setCancelFactura(null);
+      await loadCustomers();
+    } catch (err) {
+      setError(err.message || "No fue posible cancelar la factura");
+    }
+  };
 
   return (
     <>
@@ -718,6 +929,37 @@ export default function ClientesPage() {
                           <p className="text-sm font-bold" style={{ color: saldo > 0 ? PRIMARY : "#10b981" }}>{fmt(saldo)}</p>
                         </div>
                       </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setDetailFactura(f)}
+                          className="flex-1 py-2 rounded-lg text-xs font-semibold"
+                          style={{ backgroundColor: "#f1f5f9", color: "#475569" }}
+                        >
+                          Detalle
+                        </button>
+                        <button
+                          onClick={() => setAbonoFactura(f)}
+                          disabled={!activa}
+                          className="flex-1 py-2 rounded-lg text-xs font-semibold"
+                          style={{
+                            backgroundColor: activa ? "rgba(16,185,129,0.12)" : "#f1f5f9",
+                            color: activa ? "#059669" : "#94a3b8",
+                          }}
+                        >
+                          Abonar
+                        </button>
+                        <button
+                          onClick={() => setCancelFactura(f)}
+                          disabled={!activa}
+                          className="flex-1 py-2 rounded-lg text-xs font-semibold"
+                          style={{
+                            backgroundColor: activa ? "rgba(239,68,68,0.1)" : "#f1f5f9",
+                            color: activa ? "#dc2626" : "#94a3b8",
+                          }}
+                        >
+                          Cancelar
+                        </button>
+                      </div>
                     </div>
                       );
                     })}
@@ -794,7 +1036,37 @@ export default function ClientesPage() {
                             </span>
                           </td>
                           <td className="px-4 py-3" style={{ minWidth: "180px" }}>
-                            <span className="text-xs text-slate-400">Solo lectura</span>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setDetailFactura(f)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                                style={{ backgroundColor: "#f1f5f9", color: "#475569" }}
+                              >
+                                Detalle
+                              </button>
+                              <button
+                                onClick={() => setAbonoFactura(f)}
+                                disabled={!activa}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                                style={{
+                                  backgroundColor: activa ? "rgba(16,185,129,0.12)" : "#f1f5f9",
+                                  color: activa ? "#059669" : "#94a3b8",
+                                }}
+                              >
+                                Abonar
+                              </button>
+                              <button
+                                onClick={() => setCancelFactura(f)}
+                                disabled={!activa}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                                style={{
+                                  backgroundColor: activa ? "rgba(239,68,68,0.1)" : "#f1f5f9",
+                                  color: activa ? "#dc2626" : "#94a3b8",
+                                }}
+                              >
+                                Cancelar
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -924,6 +1196,18 @@ export default function ClientesPage() {
           </div>
         )}
       </div>
+
+      {abonoFactura && (
+        <AbonoModal factura={abonoFactura} onClose={() => setAbonoFactura(null)} onSave={handleAbonoSave} />
+      )}
+
+      {cancelFactura && (
+        <CancelarModal factura={cancelFactura} onClose={() => setCancelFactura(null)} onConfirm={handleCancelarFactura} />
+      )}
+
+      {detailFactura && (
+        <FacturaDetalleModal factura={detailFactura} onClose={() => setDetailFactura(null)} />
+      )}
     </>
   );
 }

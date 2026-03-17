@@ -36,6 +36,12 @@ const PAYMENT_METHODS = [
   { value: "efectivo", label: "Efectivo", icon: "payments" },
   { value: "tarjeta", label: "Tarjeta", icon: "credit_card" },
   { value: "transferencia", label: "Transferencia", icon: "account_balance" },
+  { value: "pago_movil", label: "Pago móvil", icon: "smartphone" },
+];
+
+const PAYMENT_CURRENCIES = [
+  { value: "USD", label: "Dólares", symbol: "$" },
+  { value: "VES", label: "Bolívares", symbol: "Bs." },
 ];
 
 const PRIMARY = "#eb478b";
@@ -44,14 +50,27 @@ export default function VentasPage() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("Todos");
   const [cart, setCart] = useState([]);
+  const [galleryProduct, setGalleryProduct] = useState(null);
+  const [galleryIndex, setGalleryIndex] = useState(0);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [showCustomerForm, setShowCustomerForm] = useState(false);
+  const [customerSaving, setCustomerSaving] = useState(false);
+  const [customerForm, setCustomerForm] = useState({
+    nombre: "",
+    cedula: "",
+    email: "",
+    telefono: "",
+    direccion: "",
+  });
   const [paymentMethod, setPaymentMethod] = useState("efectivo");
   const [saleType, setSaleType] = useState("contado"); // contado | credito | mixto
   const [successMsg, setSuccessMsg] = useState("");
   const [showCart, setShowCart] = useState(false);
   const [abonoAmount, setAbonoAmount] = useState("");
+  const [paymentCurrency, setPaymentCurrency] = useState("USD");
+  const [paymentNote, setPaymentNote] = useState("");
   const [productsData, setProductsData] = useState([]);
   const [customersData, setCustomersData] = useState([]);
   const [settings, setSettings] = useState({ taxRate: 0 });
@@ -105,6 +124,16 @@ export default function VentasPage() {
       c.cedula.includes(customerSearch)
   );
 
+  const resetCustomerForm = () => {
+    setCustomerForm({
+      nombre: "",
+      cedula: "",
+      email: "",
+      telefono: "",
+      direccion: "",
+    });
+  };
+
   const addToCart = (product) => {
     if (product.stock === 0) return;
     setCart((prev) => {
@@ -136,6 +165,15 @@ export default function VentasPage() {
   const iva = subtotal * (taxRate / 100);
   const total = subtotal + iva;
   const totalItems = cart.reduce((s, i) => s + i.qty, 0);
+  const abonoInputAmount = parseFloat(abonoAmount) || 0;
+  const abonoUsd =
+    paymentCurrency === "VES"
+      ? exchangeRate && exchangeRate > 0
+        ? abonoInputAmount / exchangeRate
+        : 0
+      : abonoInputAmount;
+  const abonoVes = paymentCurrency === "VES" ? abonoInputAmount : abonoUsd * Number(exchangeRate || 0);
+  const creditoRestante = Math.max(total - abonoUsd, 0);
 
   const formatUsd = useMemo(
     () => (value) => `$${Number(value || 0).toFixed(2)}`,
@@ -158,11 +196,18 @@ export default function VentasPage() {
       setProcessing(true);
       setError("");
 
-      const abono = parseFloat(abonoAmount) || 0;
+      const abono = abonoUsd;
+      const contadoUsd = paymentCurrency === "VES" ? total : total;
+      const contadoVes = total * Number(exchangeRate || 0);
       await api.createSale({
         customerId: selectedCustomer?.id,
         customerName: selectedCustomer?.name,
         paymentMethod,
+        paymentCurrency,
+        exchangeRate: Number(exchangeRate || 0),
+        paymentAmount: saleType === "contado" ? contadoUsd : paymentCurrency === "USD" ? abonoInputAmount : abonoUsd,
+        paymentAmountVes: saleType === "contado" ? (paymentCurrency === "VES" ? contadoVes : contadoUsd * Number(exchangeRate || 0)) : paymentCurrency === "VES" ? abonoInputAmount : abonoUsd * Number(exchangeRate || 0),
+        paymentNote,
         saleType,
         abono,
         items: cart.map((item) => ({
@@ -189,6 +234,9 @@ export default function VentasPage() {
       setSelectedCustomer(null);
       setCustomerSearch("");
       setAbonoAmount("");
+      setPaymentCurrency("USD");
+      setPaymentMethod("efectivo");
+      setPaymentNote("");
       setTimeout(() => setSuccessMsg(""), 4000);
     } catch (err) {
       setError(err.message || "No fue posible procesar la venta");
@@ -199,8 +247,87 @@ export default function VentasPage() {
 
   const cartInProduct = (sku) => cart.find((i) => i.sku === sku);
 
+  const openGallery = (product, index = 0) => {
+    const images = Array.isArray(product.images) ? product.images.filter((image) => image?.url) : [];
+    if (images.length === 0) {
+      return;
+    }
+
+    setGalleryProduct({ ...product, images });
+    setGalleryIndex(index);
+  };
+
+  const closeGallery = () => {
+    setGalleryProduct(null);
+    setGalleryIndex(0);
+  };
+
+  const showPrevImage = () => {
+    if (!galleryProduct?.images?.length) {
+      return;
+    }
+
+    setGalleryIndex((current) =>
+      current === 0 ? galleryProduct.images.length - 1 : current - 1
+    );
+  };
+
+  const showNextImage = () => {
+    if (!galleryProduct?.images?.length) {
+      return;
+    }
+
+    setGalleryIndex((current) =>
+      current === galleryProduct.images.length - 1 ? 0 : current + 1
+    );
+  };
+
+  const handleCustomerFormChange = (field, value) => {
+    setCustomerForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const handleCreateCustomer = async () => {
+    if (!customerForm.nombre.trim() || !customerForm.cedula.trim()) {
+      setError("Debes ingresar al menos nombre y cédula del cliente");
+      return;
+    }
+
+    try {
+      setCustomerSaving(true);
+      setError("");
+
+      const created = await api.createCustomer({
+        nombre: customerForm.nombre.trim(),
+        cedula: customerForm.cedula.trim(),
+        email: customerForm.email.trim(),
+        telefono: customerForm.telefono.trim(),
+        direccion: customerForm.direccion.trim(),
+      });
+
+      const mappedCustomer = {
+        id: created._id,
+        name: created.nombre,
+        cedula: created.cedula,
+        email: created.email,
+        phone: created.telefono,
+      };
+
+      setCustomersData((current) => [mappedCustomer, ...current]);
+      setSelectedCustomer(mappedCustomer);
+      setCustomerSearch("");
+      setShowCustomerDropdown(false);
+      setShowCustomerForm(false);
+      resetCustomerForm();
+    } catch (err) {
+      setError(err.message || "No fue posible registrar el cliente");
+    } finally {
+      setCustomerSaving(false);
+    }
+  };
+
   return (
-    <div className="flex flex-col lg:flex-row gap-4 lg:gap-5" style={{ height: "calc(100vh - 9rem)" }}>
+    <>
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-5" style={{ height: "calc(100vh - 9rem)" }}>
       {/* ── LEFT: Product catalog ────────────── */}
       <div
         className={`flex-1 flex-col bg-white rounded-xl overflow-hidden lg:!flex ${
@@ -263,6 +390,8 @@ export default function VentasPage() {
             {filtered.map((p) => {
               const inCart = cartInProduct(p.sku);
               const outOfStock = p.stock === 0;
+              const images = Array.isArray(p.images) ? p.images.filter((image) => image?.url) : [];
+              const primaryImage = images[0]?.url || "";
               return (
                 <div
                   key={p.sku}
@@ -279,22 +408,54 @@ export default function VentasPage() {
                 >
                   {/* Image area - portrait */}
                   <div
-                    className="w-full rounded-lg flex items-center justify-center overflow-hidden"
+                    className="w-full rounded-lg flex items-center justify-center overflow-hidden relative"
                     style={{ backgroundColor: "rgba(235,71,139,0.08)", aspectRatio: "3/4" }}
                   >
-                    <span
-                      className="material-symbols-outlined"
-                      style={{ fontSize: "48px", color: PRIMARY, opacity: 0.5 }}
-                    >
-                      {p.category === "Calzado"
-                        ? "footprint"
-                        : p.category === "Ropa"
-                        ? "apparel"
-                        : p.category === "Joyería"
-                        ? "diamond"
-                        : "shopping_bag"}
-                    </span>
+                    {primaryImage ? (
+                      <button type="button" onClick={() => openGallery(p, 0)} className="w-full h-full block">
+                        <img src={primaryImage} alt={p.name} className="w-full h-full object-cover" />
+                      </button>
+                    ) : (
+                      <span
+                        className="material-symbols-outlined"
+                        style={{ fontSize: "48px", color: PRIMARY, opacity: 0.5 }}
+                      >
+                        {p.category === "Calzado"
+                          ? "footprint"
+                          : p.category === "Ropa"
+                          ? "apparel"
+                          : p.category === "Joyería"
+                          ? "diamond"
+                          : "shopping_bag"}
+                      </span>
+                    )}
+                    {images.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => openGallery(p, 0)}
+                        className="absolute bottom-2 right-2 px-2 py-1 rounded-lg text-[11px] font-semibold text-white"
+                        style={{ backgroundColor: "rgba(15,23,42,0.72)" }}
+                      >
+                        +{images.length - 1} fotos
+                      </button>
+                    )}
                   </div>
+
+                  {images.length > 1 && (
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {images.slice(1).map((image, index) => (
+                        <button
+                          key={`${p.sku}-image-${index + 1}`}
+                          type="button"
+                          onClick={() => openGallery(p, index + 1)}
+                          className="w-14 h-14 rounded-lg overflow-hidden shrink-0"
+                          style={{ border: "1px solid rgba(235,71,139,0.18)" }}
+                        >
+                          <img src={image.url} alt={`${p.name} ${index + 2}`} className="w-full h-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
                   <div className="flex-1">
                     <p className="font-semibold text-slate-900 text-sm leading-tight">
@@ -577,27 +738,121 @@ export default function VentasPage() {
             </div>
           ) : (
             <div className="relative">
-              <span
-                className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                style={{ fontSize: "17px" }}
-              >
-                person_search
-              </span>
-              <input
-                value={customerSearch}
-                onChange={(e) => {
-                  setCustomerSearch(e.target.value);
-                  setShowCustomerDropdown(true);
-                }}
-                onFocus={() => setShowCustomerDropdown(true)}
-                onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
-                placeholder="Buscar cliente por nombre o cédula..."
-                className="w-full pl-9 pr-4 py-2 rounded-xl text-sm outline-none"
-                style={{
-                  backgroundColor: "#f8f6f7",
-                  border: "1px solid rgba(235,71,139,0.2)",
-                }}
-              />
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <span
+                    className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                    style={{ fontSize: "18px", lineHeight: 1 }}
+                  >
+                    search
+                  </span>
+                  <input
+                    value={customerSearch}
+                    onChange={(e) => {
+                      setCustomerSearch(e.target.value);
+                      setShowCustomerDropdown(true);
+                    }}
+                    onFocus={() => setShowCustomerDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+                    placeholder="Buscar cliente por nombre o cédula..."
+                    className="w-full pl-10 pr-4 py-2 rounded-xl text-sm outline-none"
+                    style={{
+                      backgroundColor: "#f8f6f7",
+                      border: "1px solid rgba(235,71,139,0.2)",
+                    }}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setShowCustomerForm((current) => !current);
+                    setShowCustomerDropdown(false);
+                    setError("");
+                  }}
+                  className="w-10 h-10 rounded-xl shrink-0 flex items-center justify-center"
+                  style={{
+                    backgroundColor: showCustomerForm ? PRIMARY : "rgba(235,71,139,0.08)",
+                    color: showCustomerForm ? "#fff" : PRIMARY,
+                    border: "1px solid rgba(235,71,139,0.18)",
+                  }}
+                  title="Registrar nuevo cliente"
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>person_add</span>
+                </button>
+              </div>
+
+              {showCustomerForm && (
+                <div
+                  className="mt-2 p-3 rounded-xl space-y-3"
+                  style={{ backgroundColor: "#fff", border: "1px solid rgba(235,71,139,0.15)" }}
+                >
+                  <div className="grid grid-cols-1 gap-3">
+                    <input
+                      value={customerForm.nombre}
+                      onChange={(e) => handleCustomerFormChange("nombre", e.target.value)}
+                      placeholder="Nombre completo *"
+                      className="w-full px-3 py-2 rounded-xl text-sm outline-none"
+                      style={{ backgroundColor: "#f8f6f7", border: "1px solid rgba(235,71,139,0.2)" }}
+                    />
+                    <input
+                      value={customerForm.cedula}
+                      onChange={(e) => handleCustomerFormChange("cedula", e.target.value)}
+                      placeholder="Cédula *"
+                      className="w-full px-3 py-2 rounded-xl text-sm outline-none"
+                      style={{ backgroundColor: "#f8f6f7", border: "1px solid rgba(235,71,139,0.2)" }}
+                    />
+                    <input
+                      value={customerForm.telefono}
+                      onChange={(e) => handleCustomerFormChange("telefono", e.target.value)}
+                      placeholder="Teléfono"
+                      className="w-full px-3 py-2 rounded-xl text-sm outline-none"
+                      style={{ backgroundColor: "#f8f6f7", border: "1px solid rgba(235,71,139,0.2)" }}
+                    />
+                    <input
+                      value={customerForm.email}
+                      onChange={(e) => handleCustomerFormChange("email", e.target.value)}
+                      placeholder="Correo electrónico"
+                      className="w-full px-3 py-2 rounded-xl text-sm outline-none"
+                      style={{ backgroundColor: "#f8f6f7", border: "1px solid rgba(235,71,139,0.2)" }}
+                    />
+                    <textarea
+                      value={customerForm.direccion}
+                      onChange={(e) => handleCustomerFormChange("direccion", e.target.value)}
+                      placeholder="Dirección"
+                      rows={2}
+                      className="w-full px-3 py-2 rounded-xl text-sm outline-none resize-none"
+                      style={{ backgroundColor: "#f8f6f7", border: "1px solid rgba(235,71,139,0.2)" }}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={handleCreateCustomer}
+                      disabled={customerSaving}
+                      className="flex-1 px-3 py-2 rounded-xl text-sm font-semibold text-white"
+                      style={{ backgroundColor: customerSaving ? "#cbd5e1" : PRIMARY }}
+                    >
+                      {customerSaving ? "Guardando..." : "Guardar y seleccionar"}
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setShowCustomerForm(false);
+                        resetCustomerForm();
+                      }}
+                      className="px-3 py-2 rounded-xl text-sm font-semibold"
+                      style={{ backgroundColor: "#f1f5f9", color: "#475569" }}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {showCustomerDropdown && (
                 <div
                   className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl overflow-hidden shadow-lg z-20"
@@ -714,7 +969,7 @@ export default function VentasPage() {
                       onClick={() => removeItem(item.sku)}
                       className="text-xs text-slate-400 hover:text-red-500 transition-colors"
                     >
-                      quitar
+                      Quitar
                     </button>
                   </div>
                 </div>
@@ -761,19 +1016,52 @@ export default function VentasPage() {
           {saleType === "mixto" && (
             <div className="mb-3">
               <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                Monto del Abono (Efectivo)
+                Abono inicial
               </label>
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                {PAYMENT_METHODS.map(({ value, label, icon }) => (
+                  <button
+                    key={value}
+                    onClick={() => setPaymentMethod(value)}
+                    className="py-2 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
+                    style={
+                      paymentMethod === value
+                        ? { backgroundColor: "rgba(235,71,139,0.12)", color: PRIMARY, border: `1px solid ${PRIMARY}` }
+                        : { backgroundColor: "#f8f6f7", color: "#64748b", border: "1px solid transparent" }
+                    }
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{icon}</span>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2 mb-2">
+                {PAYMENT_CURRENCIES.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    onClick={() => setPaymentCurrency(value)}
+                    className="flex-1 py-2 rounded-xl text-xs font-semibold transition-colors"
+                    style={
+                      paymentCurrency === value
+                        ? { backgroundColor: "rgba(16,185,129,0.12)", color: "#059669", border: "1px solid rgba(16,185,129,0.35)" }
+                        : { backgroundColor: "#f8f6f7", color: "#64748b", border: "1px solid transparent" }
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-semibold">$</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-semibold">{paymentCurrency === "VES" ? "Bs." : "$"}</span>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
-                  max={total}
+                  max={paymentCurrency === "VES" ? total * Number(exchangeRate || 0) : total}
                   value={abonoAmount}
                   onChange={(e) => setAbonoAmount(e.target.value)}
                   placeholder="0.00"
-                  className="w-full pl-7 pr-4 py-2.5 rounded-xl text-sm font-semibold outline-none"
+                  className="w-full pl-12 pr-4 py-2.5 rounded-xl text-sm font-semibold outline-none"
                   style={{
                     backgroundColor: "#f8f6f7",
                     border: "1px solid rgba(235,71,139,0.2)",
@@ -781,20 +1069,31 @@ export default function VentasPage() {
                   }}
                 />
               </div>
-              {abonoAmount && parseFloat(abonoAmount) > 0 && (
+              <textarea
+                value={paymentNote}
+                onChange={(e) => setPaymentNote(e.target.value)}
+                placeholder="Referencia, banco, nota del abono..."
+                className="w-full mt-2 px-3 py-2.5 rounded-xl text-sm outline-none resize-none"
+                rows={2}
+                style={{
+                  backgroundColor: "#f8f6f7",
+                  border: "1px solid rgba(235,71,139,0.2)",
+                }}
+              />
+              {abonoAmount && abonoInputAmount > 0 && (
                 <div className="mt-2 p-2 rounded-lg" style={{ backgroundColor: "rgba(235,71,139,0.08)" }}>
                   <div className="flex justify-between text-xs">
-                    <span className="text-slate-600">Abono:</span>
+                    <span className="text-slate-600">Abono registrado:</span>
                     <div className="text-right">
-                      <div className="font-bold" style={{ color: "#10b981" }}>{formatUsd(parseFloat(abonoAmount))}</div>
-                      <div className="text-[11px] text-slate-400">{formatVes(parseFloat(abonoAmount))}</div>
+                      <div className="font-bold" style={{ color: "#10b981" }}>{formatUsd(abonoUsd)}</div>
+                      <div className="text-[11px] text-slate-400">{paymentCurrency === "VES" ? `Pagado: Bs. ${Number(abonoInputAmount).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : formatVes(abonoUsd)}</div>
                     </div>
                   </div>
                   <div className="flex justify-between text-xs mt-1">
                     <span className="text-slate-600">Queda a crédito:</span>
                     <div className="text-right">
-                      <div className="font-bold" style={{ color: PRIMARY }}>{formatUsd(total - parseFloat(abonoAmount))}</div>
-                      <div className="text-[11px] text-slate-400">{formatVes(total - parseFloat(abonoAmount))}</div>
+                      <div className="font-bold" style={{ color: PRIMARY }}>{formatUsd(creditoRestante)}</div>
+                      <div className="text-[11px] text-slate-400">{formatVes(creditoRestante)}</div>
                     </div>
                   </div>
                 </div>
@@ -804,23 +1103,52 @@ export default function VentasPage() {
 
           {/* Payment method (contado only) */}
           {saleType === "contado" && (
-            <div className="flex gap-1.5 mb-3">
-              {PAYMENT_METHODS.map(({ value, label, icon }) => (
-                <button
-                  key={value}
-                  onClick={() => setPaymentMethod(value)}
-                  className="flex-1 py-2 rounded-xl text-xs font-medium flex flex-col items-center gap-1 transition-colors"
-                  style={
-                    paymentMethod === value
-                      ? { backgroundColor: "rgba(235,71,139,0.12)", color: PRIMARY, border: `1px solid ${PRIMARY}` }
-                      : { backgroundColor: "#f8f6f7", color: "#64748b", border: "1px solid transparent" }
-                  }
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{icon}</span>
-                  {label}
-                </button>
-              ))}
-            </div>
+            <>
+              <div className="flex gap-1.5 mb-2 flex-wrap">
+                {PAYMENT_METHODS.map(({ value, label, icon }) => (
+                  <button
+                    key={value}
+                    onClick={() => setPaymentMethod(value)}
+                    className="flex-1 py-2 rounded-xl text-xs font-medium flex flex-col items-center gap-1 transition-colors min-w-[5.5rem]"
+                    style={
+                      paymentMethod === value
+                        ? { backgroundColor: "rgba(235,71,139,0.12)", color: PRIMARY, border: `1px solid ${PRIMARY}` }
+                        : { backgroundColor: "#f8f6f7", color: "#64748b", border: "1px solid transparent" }
+                    }
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{icon}</span>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2 mb-2">
+                {PAYMENT_CURRENCIES.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    onClick={() => setPaymentCurrency(value)}
+                    className="flex-1 py-2 rounded-xl text-xs font-semibold transition-colors"
+                    style={
+                      paymentCurrency === value
+                        ? { backgroundColor: "rgba(16,185,129,0.12)", color: "#059669", border: "1px solid rgba(16,185,129,0.35)" }
+                        : { backgroundColor: "#f8f6f7", color: "#64748b", border: "1px solid transparent" }
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                value={paymentNote}
+                onChange={(e) => setPaymentNote(e.target.value)}
+                placeholder="Referencia, banco o nota del cobro..."
+                className="w-full mb-3 px-3 py-2.5 rounded-xl text-sm outline-none resize-none"
+                rows={2}
+                style={{
+                  backgroundColor: "#f8f6f7",
+                  border: "1px solid rgba(235,71,139,0.2)",
+                }}
+              />
+            </>
           )}
 
           {/* Checkout button */}
@@ -830,7 +1158,7 @@ export default function VentasPage() {
               processing ||
               cart.length === 0 ||
               ((saleType === "credito" || saleType === "mixto") && !selectedCustomer) ||
-              (saleType === "mixto" && (!abonoAmount || parseFloat(abonoAmount) <= 0 || parseFloat(abonoAmount) >= total))
+              (saleType === "mixto" && (!abonoAmount || abonoUsd <= 0 || abonoUsd >= total || (paymentCurrency === "VES" && !exchangeRate)))
             }
             className="w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all"
             style={{
@@ -838,14 +1166,14 @@ export default function VentasPage() {
                 processing ||
                 cart.length === 0 ||
                 ((saleType === "credito" || saleType === "mixto") && !selectedCustomer) ||
-                (saleType === "mixto" && (!abonoAmount || parseFloat(abonoAmount) <= 0 || parseFloat(abonoAmount) >= total))
+                (saleType === "mixto" && (!abonoAmount || abonoUsd <= 0 || abonoUsd >= total || (paymentCurrency === "VES" && !exchangeRate)))
                   ? "#e2e8f0"
                   : PRIMARY,
               color:
                 processing ||
                 cart.length === 0 ||
                 ((saleType === "credito" || saleType === "mixto") && !selectedCustomer) ||
-                (saleType === "mixto" && (!abonoAmount || parseFloat(abonoAmount) <= 0 || parseFloat(abonoAmount) >= total))
+                (saleType === "mixto" && (!abonoAmount || abonoUsd <= 0 || abonoUsd >= total || (paymentCurrency === "VES" && !exchangeRate)))
                   ? "#94a3b8"
                   : "#fff",
               boxShadow:
@@ -884,13 +1212,86 @@ export default function VentasPage() {
               Ingresa el monto del abono
             </p>
           )}
-          {saleType === "mixto" && abonoAmount && parseFloat(abonoAmount) >= total && (
+          {saleType === "mixto" && paymentCurrency === "VES" && !exchangeRate && (
+            <p className="text-xs text-center mt-2" style={{ color: PRIMARY }}>
+              No se pudo calcular el abono en bolívares porque la tasa oficial no está disponible
+            </p>
+          )}
+          {saleType === "mixto" && abonoAmount && abonoUsd >= total && (
             <p className="text-xs text-center mt-2" style={{ color: PRIMARY }}>
               El abono debe ser menor al total (usa "Contado" para pago completo)
             </p>
           )}
         </div>
       </div>
-    </div>
+
+      </div>
+
+      {galleryProduct && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={closeGallery}>
+          <div
+            className="w-full max-w-5xl rounded-2xl overflow-hidden"
+            style={{ backgroundColor: "#0f172a", border: "1px solid rgba(255,255,255,0.08)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+              <div>
+                <h3 className="text-white font-semibold">{galleryProduct.name}</h3>
+                <p className="text-xs text-slate-300">{galleryIndex + 1} de {galleryProduct.images.length}</p>
+              </div>
+              <button type="button" onClick={closeGallery} className="w-9 h-9 rounded-full flex items-center justify-center text-white" style={{ backgroundColor: "rgba(255,255,255,0.08)" }}>
+                <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>close</span>
+              </button>
+            </div>
+
+            <div className="relative p-4 md:p-6 flex items-center justify-center" style={{ minHeight: "60vh" }}>
+              {galleryProduct.images.length > 1 && (
+                <button
+                  type="button"
+                  onClick={showPrevImage}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full flex items-center justify-center text-white"
+                  style={{ backgroundColor: "rgba(15,23,42,0.65)" }}
+                >
+                  <span className="material-symbols-outlined">chevron_left</span>
+                </button>
+              )}
+
+              <img
+                src={galleryProduct.images[galleryIndex]?.url}
+                alt={`${galleryProduct.name} ${galleryIndex + 1}`}
+                className="max-h-[70vh] w-auto max-w-full object-contain rounded-xl"
+              />
+
+              {galleryProduct.images.length > 1 && (
+                <button
+                  type="button"
+                  onClick={showNextImage}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full flex items-center justify-center text-white"
+                  style={{ backgroundColor: "rgba(15,23,42,0.65)" }}
+                >
+                  <span className="material-symbols-outlined">chevron_right</span>
+                </button>
+              )}
+            </div>
+
+            {galleryProduct.images.length > 1 && (
+              <div className="px-4 pb-4 md:px-6 md:pb-6 flex gap-2 overflow-x-auto">
+                {galleryProduct.images.map((image, index) => (
+                  <button
+                    key={`${galleryProduct._id || galleryProduct.sku}-gallery-${index}`}
+                    type="button"
+                    onClick={() => setGalleryIndex(index)}
+                    className="w-16 h-16 md:w-20 md:h-20 rounded-lg overflow-hidden shrink-0"
+                    style={{ border: index === galleryIndex ? `2px solid ${PRIMARY}` : "1px solid rgba(255,255,255,0.16)" }}
+                  >
+                    <img src={image.url} alt={`${galleryProduct.name} miniatura ${index + 1}`} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
