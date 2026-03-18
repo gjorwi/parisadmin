@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "../../../lib/api";
 
 const allProducts = [
@@ -48,12 +48,76 @@ export default function InventarioPage() {
   const [productImages, setProductImages] = useState([null, null, null]);
   const [imageFiles, setImageFiles] = useState([null, null, null]);
   const [existingImages, setExistingImages] = useState([null, null, null]);
+  const [imageErrors, setImageErrors] = useState([null, null, null]);
   const [productsData, setProductsData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [settings, setSettings] = useState({ lowStockThreshold: 5 });
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState("");
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const scanIntervalRef = useRef(null);
+
+  const stopScanner = useCallback(() => {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    setScanning(false);
+  }, []);
+
+  const startScanner = useCallback(async () => {
+    setScanError("");
+    if (typeof window === "undefined") return;
+
+    if (!("BarcodeDetector" in window)) {
+      setScanError("Tu navegador no soporta el escáner. Usa Chrome en Android.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+      streamRef.current = stream;
+      setScanning(true);
+
+      await new Promise((r) => setTimeout(r, 100));
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+
+      const detector = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "code_128", "code_39", "upc_a", "upc_e", "qr_code"] });
+
+      scanIntervalRef.current = setInterval(async () => {
+        if (!videoRef.current || videoRef.current.readyState < 2) return;
+        try {
+          const barcodes = await detector.detect(videoRef.current);
+          if (barcodes.length > 0) {
+            setSkuValue(barcodes[0].rawValue);
+            stopScanner();
+          }
+        } catch {}
+      }, 300);
+    } catch (err) {
+      setScanError("No se pudo acceder a la cámara. Verifica los permisos.");
+      setScanning(false);
+    }
+  }, [stopScanner]);
+
+  useEffect(() => {
+    return () => stopScanner();
+  }, [stopScanner]);
 
   useEffect(() => {
     loadProducts();
@@ -62,8 +126,12 @@ export default function InventarioPage() {
   async function loadProducts() {
     try {
       setLoading(true);
-      const data = await api.products();
+      const [data, currentSettings] = await Promise.all([
+        api.products(),
+        api.settings(),
+      ]);
       setProductsData(data);
+      if (currentSettings) setSettings(currentSettings);
       setError("");
     } catch (err) {
       setError(err.message || "No fue posible cargar productos");
@@ -78,7 +146,18 @@ export default function InventarioPage() {
     return `PB-${prefix}-${num}`;
   };
 
+  const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
+
   const handleImageChange = (idx, file) => {
+    const updatedErrors = [...imageErrors];
+    if (file && file.size > MAX_IMAGE_SIZE) {
+      updatedErrors[idx] = `Máx. ${(MAX_IMAGE_SIZE / 1024 / 1024).toFixed(0)}MB`;
+      setImageErrors(updatedErrors);
+      return;
+    }
+    updatedErrors[idx] = null;
+    setImageErrors(updatedErrors);
+
     const updated = [...productImages];
     const updatedFiles = [...imageFiles];
     const updatedExisting = [...existingImages];
@@ -105,20 +184,24 @@ export default function InventarioPage() {
   };
 
   const handleCloseModal = () => {
+    stopScanner();
+    setScanError("");
     setShowModal(false);
     setSkuMode("manual");
     setSkuValue("");
     setProductImages([null, null, null]);
     setImageFiles([null, null, null]);
     setExistingImages([null, null, null]);
+    setImageErrors([null, null, null]);
     setEditingId(null);
     setForm(emptyForm);
   };
 
   function getDisplayStatus(product) {
-    if (product.status === "Bajo Stock") return "Stock Bajo";
-    if (product.status === "Activo") return product.stock <= 8 ? "Normal" : "En Stock";
-    return product.status;
+    const threshold = Number(settings.lowStockThreshold || 5);
+    if (product.stock <= 0) return "Agotado";
+    if (product.stock <= threshold) return "Stock Bajo";
+    return "En Stock";
   }
 
   const filtered = productsData.filter((p) => {
@@ -610,40 +693,47 @@ export default function InventarioPage() {
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Imágenes del Producto <span className="text-slate-400 font-normal">(máx. 3)</span></label>
                 <div className="grid grid-cols-3 gap-3">
                   {[0, 1, 2].map((idx) => (
-                    <label
-                      key={idx}
-                      className="relative flex flex-col items-center justify-center rounded-xl cursor-pointer overflow-hidden transition-all"
-                      style={{
-                        border: productImages[idx] ? "2px solid #eb478b" : "2px dashed rgba(235,71,139,0.3)",
-                        backgroundColor: productImages[idx] ? "transparent" : "rgba(235,71,139,0.04)",
-                        aspectRatio: "3/4",
-                      }}
-                    >
-                      {productImages[idx] ? (
-                        <>
-                          <img src={productImages[idx]} alt="" className="w-full h-full object-cover" />
-                          <button
-                            type="button"
-                            onClick={(e) => { e.preventDefault(); handleImageRemove(idx); }}
-                            className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center"
-                            style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
-                          >
-                            <span className="material-symbols-outlined text-white" style={{ fontSize: "14px" }}>close</span>
-                          </button>
-                        </>
-                      ) : (
-                        <div className="flex flex-col items-center gap-1 p-2 text-center">
-                          <span className="material-symbols-outlined" style={{ fontSize: "28px", color: "rgba(235,71,139,0.5)" }}>add_photo_alternate</span>
-                          <span className="text-xs text-slate-400">{idx === 0 ? "Principal" : `Foto ${idx + 1}`}</span>
-                        </div>
+                    <div key={idx} className="flex flex-col gap-1">
+                      <label
+                        className="relative flex flex-col items-center justify-center rounded-xl cursor-pointer overflow-hidden transition-all"
+                        style={{
+                          border: imageErrors[idx] ? "2px dashed #ef4444" : productImages[idx] ? "2px solid #eb478b" : "2px dashed rgba(235,71,139,0.3)",
+                          backgroundColor: imageErrors[idx] ? "rgba(239,68,68,0.04)" : productImages[idx] ? "transparent" : "rgba(235,71,139,0.04)",
+                          aspectRatio: "3/4",
+                        }}
+                      >
+                        {productImages[idx] ? (
+                          <>
+                            <img src={productImages[idx]} alt="" className="w-full h-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={(e) => { e.preventDefault(); handleImageRemove(idx); }}
+                              className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center"
+                              style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+                            >
+                              <span className="material-symbols-outlined text-white" style={{ fontSize: "14px" }}>close</span>
+                            </button>
+                          </>
+                        ) : (
+                          <div className="flex flex-col items-center gap-1 p-2 text-center">
+                            <span className="material-symbols-outlined" style={{ fontSize: "28px", color: imageErrors[idx] ? "#ef4444" : "rgba(235,71,139,0.5)" }}>
+                              {imageErrors[idx] ? "error" : "add_photo_alternate"}
+                            </span>
+                            <span className="text-xs text-slate-400">{idx === 0 ? "Principal" : `Foto ${idx + 1}`}</span>
+                          </div>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onClick={(e) => { e.target.value = ""; }}
+                          onChange={(e) => handleImageChange(idx, e.target.files?.[0])}
+                        />
+                      </label>
+                      {imageErrors[idx] && (
+                        <p className="text-[11px] font-semibold text-center" style={{ color: "#ef4444" }}>{imageErrors[idx]}</p>
                       )}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => handleImageChange(idx, e.target.files?.[0])}
-                      />
-                    </label>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -669,9 +759,9 @@ export default function InventarioPage() {
                         type="button"
                         onClick={() => {
                           setSkuMode(v);
-                          if (v === "auto") setSkuValue(generateSku(""));
-                          else if (v === "scan") setSkuValue("Apunte la cámara al código de barras...");
-                          else setSkuValue("");
+                          if (v === "auto") { stopScanner(); setSkuValue(generateSku("")); }
+                          else if (v === "scan") { setSkuValue(""); startScanner(); }
+                          else { stopScanner(); setSkuValue(""); }
                         }}
                         className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-colors"
                         style={skuMode === v ? { backgroundColor: "#eb478b", color: "#fff" } : { backgroundColor: "transparent", color: "#64748b" }}
@@ -704,6 +794,50 @@ export default function InventarioPage() {
                     </button>
                   )}
                 </div>
+                {skuMode === "scan" && !editingId && (
+                  <div className="mt-2">
+                    {scanning ? (
+                      <div className="relative rounded-xl overflow-hidden" style={{ border: "2px solid #eb478b" }}>
+                        <video ref={videoRef} className="w-full rounded-xl" style={{ maxHeight: "200px", objectFit: "cover" }} playsInline muted />
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="w-3/4 h-1/2 border-2 border-white/60 rounded-lg" />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={stopScanner}
+                          className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center"
+                          style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+                        >
+                          <span className="material-symbols-outlined text-white" style={{ fontSize: "16px" }}>close</span>
+                        </button>
+                        <div className="absolute bottom-2 left-0 right-0 text-center">
+                          <span className="text-xs font-semibold text-white px-3 py-1 rounded-full" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
+                            Apunta al código de barras
+                          </span>
+                        </div>
+                      </div>
+                    ) : skuValue ? (
+                      <div className="flex items-center gap-2 p-2 rounded-xl" style={{ backgroundColor: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: "18px", color: "#059669" }}>check_circle</span>
+                        <span className="text-sm font-semibold" style={{ color: "#059669" }}>Código escaneado</span>
+                        <button type="button" onClick={startScanner} className="ml-auto text-xs font-semibold" style={{ color: "#eb478b" }}>Re-escanear</button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={startScanner}
+                        className="w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
+                        style={{ backgroundColor: "rgba(235,71,139,0.08)", color: "#eb478b", border: "1px dashed rgba(235,71,139,0.3)" }}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>photo_camera</span>
+                        Abrir cámara para escanear
+                      </button>
+                    )}
+                    {scanError && (
+                      <p className="text-xs font-medium mt-1.5" style={{ color: "#ef4444" }}>{scanError}</p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Precio / Stock / Categoría */}

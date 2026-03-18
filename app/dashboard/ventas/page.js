@@ -190,7 +190,7 @@ export default function VentasPage() {
 
   const handleCheckout = async () => {
     if (cart.length === 0) return;
-    if ((saleType === "credito" || saleType === "mixto") && !selectedCustomer) return;
+    if (!selectedCustomer) return;
 
     try {
       setProcessing(true);
@@ -439,22 +439,6 @@ export default function VentasPage() {
                     )}
                   </div>
 
-                  {images.length > 1 && (
-                    <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1">
-                      {images.slice(1).map((image, index) => (
-                        <button
-                          key={`${p.sku}-image-${index + 1}`}
-                          type="button"
-                          onClick={() => openGallery(p, index + 1)}
-                          className="w-10 h-10 sm:w-14 sm:h-14 rounded-lg overflow-hidden shrink-0"
-                          style={{ border: "1px solid rgba(235,71,139,0.18)" }}
-                        >
-                          <img src={image.url} alt={`${p.name} ${index + 2}`} className="w-full h-full object-cover" />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
                   <div className="flex-1">
                     <p className="font-semibold text-slate-900 text-xs sm:text-sm leading-tight line-clamp-2">
                       {p.name}
@@ -697,11 +681,7 @@ export default function VentasPage() {
         {/* Customer selector */}
         <div className="px-4 pt-3 shrink-0 relative">
           <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-            {saleType === "credito" ? (
-              <span style={{ color: PRIMARY }}>* Cliente (requerido para crédito)</span>
-            ) : (
-              "Cliente (opcional)"
-            )}
+            <span style={{ color: PRIMARY }}>* Cliente (requerido)</span>
           </label>
           {selectedCustomer ? (
             <div
@@ -1168,7 +1148,7 @@ export default function VentasPage() {
             disabled={
               processing ||
               cart.length === 0 ||
-              ((saleType === "credito" || saleType === "mixto") && !selectedCustomer) ||
+              !selectedCustomer ||
               (saleType === "mixto" && (!abonoAmount || abonoUsd <= 0 || abonoUsd >= total || (paymentCurrency === "VES" && !exchangeRate)))
             }
             className="w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all"
@@ -1176,14 +1156,14 @@ export default function VentasPage() {
               backgroundColor:
                 processing ||
                 cart.length === 0 ||
-                ((saleType === "credito" || saleType === "mixto") && !selectedCustomer) ||
+                !selectedCustomer ||
                 (saleType === "mixto" && (!abonoAmount || abonoUsd <= 0 || abonoUsd >= total || (paymentCurrency === "VES" && !exchangeRate)))
                   ? "#e2e8f0"
                   : PRIMARY,
               color:
                 processing ||
                 cart.length === 0 ||
-                ((saleType === "credito" || saleType === "mixto") && !selectedCustomer) ||
+                !selectedCustomer ||
                 (saleType === "mixto" && (!abonoAmount || abonoUsd <= 0 || abonoUsd >= total || (paymentCurrency === "VES" && !exchangeRate)))
                   ? "#94a3b8"
                   : "#fff",
@@ -1213,9 +1193,9 @@ export default function VentasPage() {
             </p>
           )}
 
-          {(saleType === "credito" || saleType === "mixto") && !selectedCustomer && (
+          {!selectedCustomer && (
             <p className="text-xs text-center mt-2" style={{ color: PRIMARY }}>
-              Selecciona un cliente para {saleType === "credito" ? "factura a crédito" : "pago mixto"}
+              Selecciona un cliente para realizar el cobro
             </p>
           )}
           {saleType === "mixto" && selectedCustomer && (!abonoAmount || parseFloat(abonoAmount) <= 0) && (
