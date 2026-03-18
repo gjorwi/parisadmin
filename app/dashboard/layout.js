@@ -65,6 +65,10 @@ export default function DashboardLayout({ children }) {
     };
   }, [pathname]);
 
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
   const handleLogout = () => {
     clearSession();
     router.push("/login");
